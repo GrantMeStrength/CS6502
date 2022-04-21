@@ -45,7 +45,7 @@ namespace CPU6502
         byte pop()
         {
             SP = (byte)(SP + 1);
-            return memory.ReadAddress(address: (UInt16)(0x100 + (UInt16)(SP)));
+            return memory.ReadAddress((UInt16)(0x100 + (UInt16)(SP)));
 
         }
 
@@ -247,8 +247,94 @@ void SetFlags(byte value)
 
 }
 
+        UInt16 get_indexed_indirect_zp_x_address() 
+{ /// 01, 21, 41, 61, 81, a1, c1, e1,
+    UInt16 fi = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+            UInt16 bal = (UInt16)(fi + X);
+            UInt16 adl = memory.ReadAddress((UInt16)(0xFF & bal));
+        UInt16 adh = (UInt16)(memory.ReadAddress((ushort)(0xFF & (bal + 1))));
+        UInt16 adr = (UInt16)((adh << 8) + adl);
+        return adr;
 
-bool ProcessInstruction(byte instruction )
+
+    }
+
+    byte get_indexed_indirect_zp_x()
+{
+            return memory.ReadAddress(get_indexed_indirect_zp_x_address());
+    }
+
+    void OR_indexed_indirect_x() // 01
+        {
+            UInt16 za = memory.ReadAddress(PC);
+            byte v = get_indexed_indirect_zp_x();
+            A = (byte)(A | v);
+            SetFlags(A);
+            //prn("OR ($" + String(format: "%02X", za) + ",X)")
+    }
+
+        void OR_z() // 5
+        {
+            UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+            byte v = memory.ReadAddress((UInt16)(ad));
+            A = (byte)(A | v);
+            SetFlags(A);
+             //prn("OR $" + String(format: "%02X", ad))
+    }
+
+        UInt16 getZeroPageX() 
+{
+            UInt16 adr = (UInt16)(memory.ReadAddress(PC) + X);
+        PC = (UInt16)(PC + 1);
+            return ((UInt16)(adr & 0xff));
+    }
+
+        UInt16 getZeroPageY() 
+{
+            UInt16 adr = (UInt16)(memory.ReadAddress(PC) + Y);
+        PC = (UInt16)(PC + 1);
+            return (UInt16)(adr & 0xff);
+    }
+
+
+        void ASL_z() // 06
+        {
+            UInt16 za = memory.ReadAddress(PC);
+            byte v = memory.ReadAddress((UInt16)(za));
+            CARRY_FLAG = ((v & 128) == 128);
+            v = (byte)(v << 1);
+            memory.WriteAddress((UInt16)(za), v);
+        PC = (UInt16)(PC + 1);
+            SetFlags(v);
+        //prn("ASL $" + String(format: "%02X", za))
+    }
+
+        void ASL_zx() // 16
+        {
+            UInt16 z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX();
+        byte v = memory.ReadAddress(ad);
+            CARRY_FLAG = ((v & 128) == 128);
+            v = (byte)(v << 1);
+            memory.WriteAddress(ad, v);
+            SetFlags(v);
+        //prn("ASL $" + String(format: "%02X", z) + ",X")
+    }
+
+
+        void PHP() // 08
+        {
+            BREAK_FLAG = true;
+            UNUSED_FLAG = true;
+            byte r = GetStatusRegister();
+            push((byte)(r | (BREAK_FLAG ? 0x10 : 0)));  // 6502 quirk - push the BREAK_FLAG but don't set it
+        //prn("PHP")
+    }
+
+
+
+
+        bool ProcessInstruction(byte instruction )
 {
 
     switch (instruction) {
@@ -260,13 +346,13 @@ bool ProcessInstruction(byte instruction )
 
 
         case 5:
-                    OR_z();
+                    OR_z(); break;
         case 06:
-                    ASL_z();
+                    ASL_z(); break;
 
 
         case 8:
-            PHP()
+                    PHP(); break;
         case 9:
             OR_i();
         case 0x0A:
@@ -709,17 +795,21 @@ bool ProcessInstruction(byte instruction )
 
 
         default:
-            return false
+                    return false;
 
 
         }
 
-    return true
+            return true;
     }
 
+        }
 
 
-public CPU();
+  
+
+
+    public CPU();
         {
         }
     }
@@ -756,41 +846,41 @@ class CPU {
     
    
     
-    func SetTTYMode(TTY : Bool)
+    void SetTTYMode(TTY : Bool)
     {
         // These memory addresses will have different values depending on the KIM working in LED mode or Serial terminal mode.
         // They're effectively hardware settings made by a switch on the board.
        
         if TTY // Console mode
         {
-            Write(address: 0x1740, byte: 0x00)
-            Write(address: 0x00ff, byte: 0x00)
+            Write(0x1740, byte: 0x00)
+            Write(0x00ff, byte: 0x00)
         }
         else // HEX keypad and LEDs
         {
-            Write(address: 0x1740, byte: 0xFF)
-            Write(address: 0x00ff, byte: 0x01)
+            Write(0x1740, byte: 0xFF)
+            Write(0x00ff, byte: 0x01)
         }
     }
     
     // When saving and loading, it's important to save the Registers and PC state.
-    func GetStatus() -> [(byte)]
+    void GetStatus() -> [(byte)]
     {
         let pch = (byte)(GetPC() >> 8)
         let pcl = (byte)(GetPC() & 0x00ff)
         return [A, X, Y, SP, GetStatusRegister(), pcl, pch]
     }
-    func SetStatus(flags : [(byte)])
+    void SetStatus(flags : [(byte)])
     {
         A = flags[0]
         X = flags[1]
         Y = flags[2]
         SP = flags[3]
         SetStatusRegister(reg: flags[4])
-        SetPC(ProgramCounter: UInt16(flags[6]) << 8 + UInt16(flags[5]))
+        SetPC(ProgramCounter: (UInt16)(flags[6]) << 8 + (UInt16)(flags[5]))
     }
     
-    func LoadFromDocuments() -> Bool // This load routine also loads in register state (so it's > 64Kb by 7 bytes)
+    void LoadFromDocuments() -> Bool // This load routine also loads in register state (so it's > 64Kb by 7 bytes)
     {
         let directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let fileURL = URL(fileURLWithPath: "TicTacToe", relativeTo: directoryURL).appendingPathExtension("kim")
@@ -812,7 +902,7 @@ class CPU {
         return true
     }
     
-    func LoadFromBundle() -> Bool
+    void LoadFromBundle() -> Bool
     {
        // let directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let filepath = Bundle.main.path(forResource: "TicTacToe", ofType: "kim")
@@ -836,7 +926,7 @@ class CPU {
         return true
     }
     
-    func SaveToDocuments()
+    void SaveToDocuments()
     {
         print("Saving memory to Documents - po NSHomeDirectory().")
         let directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -858,29 +948,29 @@ class CPU {
     }
     
     
-    func AppleActive( state : Bool)
+    void AppleActive( state : Bool)
     {
         APPLE_ACTIVE = state
         memory.AppleActive(state: APPLE_ACTIVE)
     }
     
-    func AppleReady() -> Bool
+    void AppleReady() -> Bool
     {
         return memory.AppleReady()
     }
     
-    func AppleKeyboard(s : Bool, k : (byte))
+    void AppleKeyboard(s : Bool, k : (byte))
     {
         memory.AppleKeyState(state: s, key: k)
     }
     
-    func AppleOutput() ->(Bool, (byte))
+    void AppleOutput() ->(Bool, (byte))
     {
         return memory.getAppleOutputState()
     }
     
     
-    func APPLE_ROM_Code (address: UInt16)
+    void APPLE_ROM_Code (UInt16)
     {
         // The APPLE 1 is very simple, and code simply redirects the output to the "terminal"
         // when the rom routine is called.
@@ -897,7 +987,7 @@ class CPU {
         
     }
     
-    func KIM_ROM_Code (address: UInt16)
+    void KIM_ROM_Code (UInt16)
     {
         // This is the KIM specfic part.
         
@@ -924,14 +1014,14 @@ class CPU {
             
         case 0x1C2A : // Test the input speed for the hardware for timing. We can fake it.
             self.prn("DETCPS")
-            memory.WriteAddress(address: 0x17F3, value: 1)
-            memory.WriteAddress(address: 0x17F2, value: 1)
+            memory.WriteAddress(0x17F3, 1)
+            memory.WriteAddress(0x17F2, 1)
             PC = 0x1C4F
             
         case 0x1EFE : // The AK call is a "is someone pressing my keyboard?"
             self.prn("AK")
             
-            if memory.ReadAddress(address: 0xff) == 0 // LED mode
+            if memory.ReadAddress(0xff) == 0 // LED mode
             {
                 A = 0
             }
@@ -957,12 +1047,12 @@ class CPU {
             if kim_keyActive
             {
                 A = kim_keyNumber
-                SetFlags(value: A)
+                SetFlags(A)
             }
             else
             {
                 A = 0xFF
-                SetFlags(value: A)
+                SetFlags(A)
             }
             
             kim_keyNumber = 0
@@ -997,7 +1087,7 @@ A = GetAKey()
     break
             }
 
-X = memory.ReadAddress(address: 0xFD) // x is saved in TMPX by getch routine, we need to get it back in x;
+X = memory.ReadAddress(0xFD) // x is saved in TMPX by getch routine, we need to get it back in x;
             Y = 0xFF
             PC = 0x1E87
 
@@ -1008,7 +1098,7 @@ X = memory.ReadAddress(address: 0xFD) // x is saved in TMPX by getch routine, we
     }
     
     
-    func Init(ProgramName : String, computer: String)
+    void Init(ProgramName : String, computer: String)
     {
 
     if computer == "APL" { APPLE_ACTIVE = true } else { APPLE_ACTIVE = false}
@@ -1045,7 +1135,7 @@ X = memory.ReadAddress(address: 0xFD) // x is saved in TMPX by getch routine, we
 
 // Execute one instruction - called by both single-stepping AND by running from the UI code.
 
-func Step() -> (address: UInt16, Break: Bool, opcode: String, display: Bool)
+void Step() -> (UInt16, Break: Bool, opcode: String, display: Bool)
     {
 
     memory.RIOT_Timer_Click()
@@ -1054,7 +1144,7 @@ func Step() -> (address: UInt16, Break: Bool, opcode: String, display: Bool)
         dataToDisplay = false
 
         // Intercept some KIM-1 Specific things
-    KIM_ROM_Code(address: PC)
+    KIM_ROM_Code(PC)
 
         // Execute the instruction at PC
     if !Execute()
@@ -1063,7 +1153,7 @@ func Step() -> (address: UInt16, Break: Bool, opcode: String, display: Bool)
         }
     RUNTIME_DEBUG_MESSAGES = true
 
-        //print(memory.ReadAddress(address: 0x1740))
+        //print(memory.ReadAddress(0x1740))
         // Optional - display debug information using RUNTIME_DEBUG_MESSAGES to trigger debug information display
         //        if RUNTIME_DEBUG_MESSAGES
         //        {
@@ -1078,14 +1168,14 @@ func Step() -> (address: UInt16, Break: Bool, opcode: String, display: Bool)
     }
 
 // Serial terminal version
-func StepSerial() -> (address: UInt16, Break: Bool, terminalOutput: String)
+void StepSerial() -> (UInt16, Break: Bool, terminalOutput: String)
     {
 
     if !APPLE_ACTIVE
         {
         // Intercept some KIM-1 Specific things
         memory.RIOT_Timer_Click()
-            KIM_ROM_Code(address: PC)
+            KIM_ROM_Code(PC)
         }
 
     // Execute the instruction at PC
@@ -1094,7 +1184,7 @@ func StepSerial() -> (address: UInt16, Break: Bool, terminalOutput: String)
 
         if APPLE_ACTIVE
         {
-        APPLE_ROM_Code(address: PC)
+        APPLE_ROM_Code(PC)
 
 
 
@@ -1121,7 +1211,7 @@ func StepSerial() -> (address: UInt16, Break: Bool, terminalOutput: String)
 
 
 
-func GetAKey() -> (byte)
+void GetAKey() -> (byte)
 {
     // if no key pressed, return 0xFF
     // else return ASCII code (upper case) and switch off key
@@ -1139,7 +1229,7 @@ func GetAKey() -> (byte)
 
 
 
-func Dump(opcode : (byte))
+void Dump(opcode : (byte))
     {
 
     let regs = String("OP:\(String(format: " % 02X",opcode)) PC:\(String(format: " % 04X", PC)) A:\(String(format: " % 02X",A)) X:\(String(format: " % 02X",X)) Y:\(String(format: " % 02X",Y)) SP:\(String(format: " % 02X",SP))")
@@ -1160,7 +1250,7 @@ func Dump(opcode : (byte))
 
     }
 
-func DisplayDebugInformation()
+void DisplayDebugInformation()
 {
 
     var flags = ""
@@ -1173,7 +1263,7 @@ func DisplayDebugInformation()
     if ZERO_FLAG { flags = flags + "Z"} else { flags = flags + "z"}
     if CARRY_FLAG { flags = flags + "C"} else { flags = flags + "c"}
 
-    let regs = String("\(String(format: " % 04X",Read(address: PC)))  PC:\(String(format: " % 04X", PC)) A:\(String(format: " % 02X",A)) X:\(String(format: " % 02X",X)) Y:\(String(format: " % 02X",Y)) SP:\(String(format: " % 02X",SP))  AC:\(String(format: " % 02X",memory.ReadAddress(address: 0x200)))  AC:\(String(format: " % 02X",memory.ReadAddress(address: 0x1A)))  AC:\(String(format: " % 02X",memory.ReadAddress(address: 0x19)))")
+    let regs = String("\(String(format: " % 04X",Read(PC)))  PC:\(String(format: " % 04X", PC)) A:\(String(format: " % 02X",A)) X:\(String(format: " % 02X",X)) Y:\(String(format: " % 02X",Y)) SP:\(String(format: " % 02X",SP))  AC:\(String(format: " % 02X",memory.ReadAddress(0x200)))  AC:\(String(format: " % 02X",memory.ReadAddress(0x1A)))  AC:\(String(format: " % 02X",memory.ReadAddress(0x19)))")
 
 
         printStatusToDebugWindow(regs, flags)
@@ -1196,20 +1286,20 @@ func DisplayDebugInformation()
 
 
 
-func RTI()
+void RTI()
 {
     // Used in the KIM-1 to launch user app
 
     SetStatusRegister(reg: pop())
 
 
-        let l = UInt16(pop())
-        let h = UInt16(pop())
+        let l = (UInt16)(pop())
+        let h = (UInt16)(pop())
         PC = (h << 8) + l
         prn("RTI")
     }
 
-func NOP() // EA
+void NOP() // EA
 {
     prn("NOP")
     }
@@ -1217,10 +1307,10 @@ func NOP() // EA
 // Accumulator BIT test - needs proper testing
 
 
-func BIT_z() // 24
+void BIT_z() // 24
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         let t = (A & v)
         ZERO_FLAG = (t == 0) ? true : false
         NEGATIVE_FLAG = (v & 128) == 128
@@ -1231,10 +1321,10 @@ func BIT_z() // 24
     }
 
 
-func BIT_a() // 2C
+void BIT_a() // 2C
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         let t = (A & v)
         ZERO_FLAG = (t == 0) ? true : false
         NEGATIVE_FLAG = (v & 128) == 128
@@ -1246,68 +1336,68 @@ func BIT_a() // 2C
 
 // Accumulator Addition
 
-func ADC_i() // 69
+void ADC_i() // 69
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         addC(v)
         prn("ADC #$" + String(format: "%02X", v))
     }
 
-func ADC_indexed_indirect_x() // 61
+void ADC_indexed_indirect_x() // 61
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         addC(v)
         prn("ADC ($" + String(format: "%02X", za) + ",X)")
     }
 
-func ADC_z() // 65
+void ADC_z() // 65
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         addC(v)
         prn("ADC $" + String(format: "%04X", v))
     }
 
-func ADC_zx() // 75
+void ADC_zx() // 75
 {
     let zp = getZeroPageX()
-        let v = memory.ReadAddress(address: zp)
+        let v = memory.ReadAddress(zp)
         addC(v)
-        prn("ADC $" + String(format: "%02X", zp & -UInt16(X)) + ",X")
+        prn("ADC $" + String(format: "%02X", zp & -(UInt16)(X)) + ",X")
     }
 
-func ADC_a() // 6D
+void ADC_a() // 6D
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         addC(v)
         prn("ADC $" + String(format: "%04X", ad))
     }
 
-func ADC_indexed_x() // 7d
+void ADC_indexed_x() // 7d
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         addC(v)
-        prn("ADC $" + String(format: "%04X", ad & -UInt16(X)))
+        prn("ADC $" + String(format: "%04X", ad & -(UInt16)(X)))
     }
 
-func ADC_indexed_y() // 79
+void ADC_indexed_y() // 79
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         addC(v)
-        prn("ADC $" + String(format: "%04X", ad & -UInt16(Y)))
+        prn("ADC $" + String(format: "%04X", ad & -(UInt16)(Y)))
     }
 
 
-func ADC_indirect_indexed_y() // 71
+void ADC_indirect_indexed_y() // 71
 {
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
         addC(v)
-        prn("ADC ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        prn("ADC ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 
@@ -1315,64 +1405,64 @@ func ADC_indirect_indexed_y() // 71
 
 // Accumulator Subtraction
 
-func SBC_i() // E9
+void SBC_i() // E9
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         subC(v)
         prn("SBC #$" + String(format: "%02X", v))
     }
 
-func SBC_z() // E5
+void SBC_z() // E5
 {
-    let zero_page_address = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(zero_page_address))
+    let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(zero_page_address))
         subC(v)
         prn("SBC $" + String(String(format: "%02X", zero_page_address)))
     }
 
-func SBC_zx() // F5
+void SBC_zx() // F5
 {
     let ad = getZeroPageX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%02X", ad & -UInt16(X)) + ",X")
+        prn("SBC $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
-func SBC_a() // ed
+void SBC_a() // ed
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         subC(v)
         prn("SBC $" + String(format: "%04X", ad))
     }
 
-func SBC_indexed_x() // fd
+void SBC_indexed_x() // fd
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%04X", ad - UInt16(X)) + ",X")
+        prn("SBC $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
     }
 
-func SBC_indexed_y() // F9
+void SBC_indexed_y() // F9
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        prn("SBC $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
-func SBC_indirect_indexed_y() // F1
+void SBC_indirect_indexed_y() // F1
 {
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
         subC(v)
-        prn("SBC ($" + String(format: "%04X", adr - UInt16(Y)) + "),Y")
+        prn("SBC ($" + String(format: "%04X", adr - (UInt16)(Y)) + "),Y")
     }
 
-func SBC_indexed_indirect_x() // E1
+void SBC_indexed_indirect_x() // E1
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         subC(v)
         prn("SBC ($" + String(format: "%04X", za) + ",X)")
@@ -1380,7 +1470,7 @@ func SBC_indexed_indirect_x() // E1
 
 // General comparision
 
-func compare(_ n : (byte), _ v: (byte))
+void compare(_ n : (byte), _ v: (byte))
     {
     let result = Int16(n) - Int16(v)
         if n >= (byte)(v & 0xFF) { CARRY_FLAG = true } else { CARRY_FLAG = false }
@@ -1390,25 +1480,25 @@ func compare(_ n : (byte), _ v: (byte))
 
 // X Comparisons
 
-func CPX_i() // E0
+void CPX_i() // E0
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(X, v)
         prn("CPX #$" + String(format: "%02X", v))
     }
 
-func CPX_z() // E4
+void CPX_z() // E4
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(X, v)
         prn("CPX $" + String(format: "%02X", ad))
     }
 
-func CPX_A() // EC
+void CPX_A() // EC
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(X, v)
         prn("CPX $" + String(format: "%04X", ad))
 
@@ -1417,25 +1507,25 @@ func CPX_A() // EC
 
 // Y Comparisons
 
-func CPY_i() // C0
+void CPY_i() // C0
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(Y, v)
         prn("CPY #$" + String(format: "%02X", v))
     }
 
-func CPY_z() // C4
+void CPY_z() // C4
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(Y, v)
         prn("CPY $" + String(format: "%02X", ad))
     }
 
-func CPY_A()
+void CPY_A()
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(Y, v)
         prn("CPY $" + String(format: "%04X", ad))
 
@@ -1444,67 +1534,67 @@ func CPY_A()
 
 // Accumulator Comparison
 
-func CMP_i() // C9
+void CMP_i() // C9
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(A, v)
         prn("CMP #$" + String(format: "%02X", v))
     }
 
-func CMP_z() // C5
+void CMP_z() // C5
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(A, v)
         prn("CMP $" + String(format: "%02X", ad))
     }
 
-func CMP_zx() // D5
+void CMP_zx() // D5
 {
     let ad = getZeroPageX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%02X", ad - UInt16(X)) + ",X")
+        prn("CMP $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
-func CMP_a() // cd
+void CMP_a() // cd
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         compare(A, v)
         prn("CMP $" + String(format: "%04X", ad))
     }
 
-func CMP_indexed_x() // dd
+void CMP_indexed_x() // dd
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        prn("CMP $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
-func CMP_indexed_y() // d9
+void CMP_indexed_y() // d9
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        prn("CMP $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
-func CMP_indirect_indexed_y() // D1
+void CMP_indirect_indexed_y() // D1
 {
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
 
-        //let zp = UInt16(memory.ReadAddress(address: PC));
-        //let v = memory.ReadAddress(address: getIndirectIndexedBase())
+        //let zp = (UInt16)(memory.ReadAddress(PC));
+        //let v = memory.ReadAddress(getIndirectIndexedBase())
     compare(A, v)
-        prn("CMP ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        prn("CMP ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
-func CMP_indexed_indirect_x() // c1
+void CMP_indexed_indirect_x() // c1
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         compare(A, v)
         prn("CMP ($" + String(format: "%02X", za) + "),X")
@@ -1513,131 +1603,131 @@ func CMP_indexed_indirect_x() // c1
 
 // Accumulator Loading
 
-func LDA_i() // A9
+void LDA_i() // A9
 {
     A = getImmediate()
-        SetFlags(value: A)
+        SetFlags(A)
         prn("LDA #$" + String(format: "%02X", A))
     }
 
-func LDA_z() // A5
+void LDA_z() // A5
 {
-    let zero_page_ad = memory.ReadAddress(address: PC); PC = PC + 1
-        A = memory.ReadAddress(address: UInt16(zero_page_ad))
-        SetFlags(value: A)
+    let zero_page_ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        A = memory.ReadAddress((UInt16)(zero_page_ad))
+        SetFlags(A)
         prn("LDA $" + String(format: "%02X", zero_page_ad))
     }
 
-func LDA_zx() // B5
+void LDA_zx() // B5
 {
     let ad = getZeroPageX()
-        A = memory.ReadAddress(address: ad)
-        SetFlags(value: A)
-        prn("LDA $" + String(format: "%02X", ad & -UInt16(X)) + ",X")
+        A = memory.ReadAddress(ad)
+        SetFlags(A)
+        prn("LDA $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
-func LDA_a() // ad
+void LDA_a() // ad
 {
     let ad = getAbsoluteAddress()
-        A = memory.ReadAddress(address: ad)
-        SetFlags(value: A)
+        A = memory.ReadAddress(ad)
+        SetFlags(A)
         prn("LDA $" + String(format: "%04X", ad))
     }
 
-func LDA_indexed_x() // bd
+void LDA_indexed_x() // bd
 {
     let ad = getAbsoluteX()
-        A = memory.ReadAddress(address: ad)
-        SetFlags(value: A)
-        prn("LDA $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        A = memory.ReadAddress(ad)
+        SetFlags(A)
+        prn("LDA $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
-func LDA_indexed_y() // B9
+void LDA_indexed_y() // B9
 {
     let ad = getAbsoluteY()
-        A = memory.ReadAddress(address: ad)
-        SetFlags(value: A)
-        prn("LDA $" + String(format: "%04X", ad & -UInt16(Y)) + ",Y")
+        A = memory.ReadAddress(ad)
+        SetFlags(A)
+        prn("LDA $" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
     }
 
-func LDA_indexed_indirect_x() // A1
+void LDA_indexed_indirect_x() // A1
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     A = get_indexed_indirect_zp_x()
-        SetFlags(value: A)
+        SetFlags(A)
         prn("LDA ($" + String(format: "%02X", za) + ",X)")
     }
 
-func LDA_indirect_indexed_y() // B1
+void LDA_indirect_indexed_y() // B1
 {
     let adr = getIndirectY()
-        A = memory.ReadAddress(address: adr)
-        //let za = memory.ReadAddress(address: PC)
-        // A = memory.ReadAddress(address: getIndirectIndexedBase())
-    SetFlags(value: A)
-        prn("LDA ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        A = memory.ReadAddress(adr)
+        //let za = memory.ReadAddress(PC)
+        // A = memory.ReadAddress(getIndirectIndexedBase())
+    SetFlags(A)
+        prn("LDA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 
 
 // Accumulator Storing
 
-func STA_z() // 85
+void STA_z() // 85
 {
-    let zero_page_add = memory.ReadAddress(address: PC); PC = PC + 1
-        memory.WriteAddress(address: UInt16(zero_page_add), value: A)
+    let zero_page_add = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        memory.WriteAddress((UInt16)(zero_page_add), A)
         prn("STA $" + String(format: "%02X", zero_page_add))
     }
 
-func STA_zx() // 95
+void STA_zx() // 95
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        memory.WriteAddress(address: ad, value: A)
+        memory.WriteAddress(ad, A)
         prn("STA $" + String(format: "%02X", z) + ",X")
     }
 
-func STA_a() // 8D
+void STA_a() // 8D
 {
     let v = getAbsoluteAddress()
-        memory.WriteAddress(address: v, value: A)
+        memory.WriteAddress(v, A)
         prn("STA #$" + String(format: "%04X", v))
     }
 
 
-func STA_indexed_x() // 9d
+void STA_indexed_x() // 9d
 {
     let ad = getAbsoluteX()
-        memory.WriteAddress(address: ad, value: A)
-        prn("STA #$" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        memory.WriteAddress(ad, A)
+        prn("STA #$" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
 
 
-func STA_indexed_y() // Absolute indexed // 99
+void STA_indexed_y() // Absolute indexed // 99
 {
     let ad = getAbsoluteY()
-        memory.WriteAddress(address: ad, value: A)
-        prn("STA #$" + String(format: "%04X", ad & -UInt16(Y)) + ",Y")
+        memory.WriteAddress(ad, A)
+        prn("STA #$" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
     }
 
-func STA_indirect_indexed_y() // 91
+void STA_indirect_indexed_y() // 91
 {
     let adr = getIndirectY()
-        memory.WriteAddress(address: adr, value: A)
+        memory.WriteAddress(adr, A)
 
 
-        // let za = memory.ReadAddress(address: PC)
-        //  memory.WriteAddress(address: getIndirectIndexedBase(), value: A)
-    prn("STA ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        // let za = memory.ReadAddress(PC)
+        //  memory.WriteAddress(getIndirectIndexedBase(), A)
+    prn("STA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
-func STA_indexed_indirect_x() // 81
+void STA_indexed_indirect_x() // 81
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let adr = get_indexed_indirect_zp_x_address()
-        memory.WriteAddress(address: UInt16(adr), value: A)
+        memory.WriteAddress((UInt16)(adr), A)
         prn("STA ($" + String(format: "%02X", za) + "),X")
 
     }
@@ -1645,379 +1735,379 @@ func STA_indexed_indirect_x() // 81
 
 // Register X Loading
 
-func LDX_i() // A2
+void LDX_i() // A2
 {
     X = getImmediate()
-        SetFlags(value: X)
+        SetFlags(X)
         prn("LDX #$" + String(format: "%02X", X))
     }
 
-func LDX_z() // A6
+void LDX_z() // A6
 {
-    let zero_page_address = memory.ReadAddress(address: PC); PC = PC + 1
-        X = memory.ReadAddress(address: UInt16(zero_page_address))
-        SetFlags(value: X)
+    let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        X = memory.ReadAddress((UInt16)(zero_page_address))
+        SetFlags(X)
         prn("LDX $" + String(format: "%02X", zero_page_address))
     }
 
-func LDX_zy() // B6
+void LDX_zy() // B6
 {
     let ad = getZeroPageY()
-        X = memory.ReadAddress(address: ad)
-        SetFlags(value: X)
-        prn("LDX $" + String(format: "%02X", ad & -UInt16(Y)) + ",Y")
+        X = memory.ReadAddress(ad)
+        SetFlags(X)
+        prn("LDX $" + String(format: "%02X", ad & -(UInt16)(Y)) + ",Y")
     }
 
-func LDX_a() // ae
+void LDX_a() // ae
 {
     let ad = getAbsoluteAddress()
-        X = memory.ReadAddress(address: ad)
-        SetFlags(value: X)
+        X = memory.ReadAddress(ad)
+        SetFlags(X)
         prn("LDX $" + String(format: "%04X", ad))
     }
 
-func LDX_indexed_y() // BE
+void LDX_indexed_y() // BE
 {
     let ad = getAbsoluteY()
-        X = memory.ReadAddress(address: ad)
-        SetFlags(value: X)
-        prn("LDX $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        X = memory.ReadAddress(ad)
+        SetFlags(X)
+        prn("LDX $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 // Register Y Loading
 
-func LDY_i() // A0
+void LDY_i() // A0
 {
     Y = getImmediate()
-        SetFlags(value: Y)
+        SetFlags(Y)
         prn("LDY #$" + String(format: "%02X", Y))
     }
 
-func LDY_z() // A4
+void LDY_z() // A4
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        Y = memory.ReadAddress(address: UInt16(ad))
-        SetFlags(value: Y)
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        Y = memory.ReadAddress((UInt16)(ad))
+        SetFlags(Y)
         prn("LDY $" + String(format: "%02X", Y))
     }
 
-func LDY_zx() // B4
+void LDY_zx() // B4
 {
     let ad = getZeroPageX()
-        Y = memory.ReadAddress(address: ad)
-        SetFlags(value: Y)
-        prn("LDY $" + String(format: "%02X", ad & -UInt16(X)) + ",X")
+        Y = memory.ReadAddress(ad)
+        SetFlags(Y)
+        prn("LDY $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
-func LDY_a() // AC
+void LDY_a() // AC
 {
     let ad = getAbsoluteAddress()
-        Y = memory.ReadAddress(address: UInt16(ad))
-        SetFlags(value: Y)
+        Y = memory.ReadAddress((UInt16)(ad))
+        SetFlags(Y)
         prn("LDY $" + String(format: "%04X", ad))
     }
 
-func LDY_indexed_x() // BC
+void LDY_indexed_x() // BC
 {
     let ad = getAbsoluteX()
-        Y = memory.ReadAddress(address: ad)
-        SetFlags(value: Y)
-        prn("LDY $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        Y = memory.ReadAddress(ad)
+        SetFlags(Y)
+        prn("LDY $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
 
 // Accumulator AND
 
-func AND_i() // 29
+void AND_i() // 29
 {
     let v = getImmediate()
         A = A & v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("AND #$" + String(format: "%02X", v))
     }
 
-func AND_z() // 25
+void AND_z() // 25
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A & v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("AND $" + String(format: "%02X", ad))
     }
 
-func AND_zx() // 35
+void AND_zx() // 35
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A & v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("AND $" + String(format: "%02X", z))
     }
 
-func AND_a() // 2d
+void AND_a() // 2d
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A & v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("AND $" + String(format: "%04X", ad))
     }
 
-func AND_indexed_x() // 3d
+void AND_indexed_x() // 3d
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A & v
-        SetFlags(value: A)
-        prn("AND $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        SetFlags(A)
+        prn("AND $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
-func AND_indexed_y() // 39
+void AND_indexed_y() // 39
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A & v
-        SetFlags(value: A)
-        prn("AND $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        SetFlags(A)
+        prn("AND $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
-func AND_indexed_indirect_x() // 21
+void AND_indexed_indirect_x() // 21
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         A = A & v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("AND ($" + String(format: "%02X", za) + ",X)")
     }
 
-func AND_indirect_indexed_y() // 31
+void AND_indirect_indexed_y() // 31
 {
-    //   let za = memory.ReadAddress(address: PC)
-    //  let v = memory.ReadAddress(address: getIndirectIndexedBase())
+    //   let za = memory.ReadAddress(PC)
+    //  let v = memory.ReadAddress(getIndirectIndexedBase())
 
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
 
 
         A = A & v
-        SetFlags(value: A)
-        prn("AND ($" + String(format: "%02X", adr - UInt16(Y)) + ",X)")
+        SetFlags(A)
+        prn("AND ($" + String(format: "%02X", adr - (UInt16)(Y)) + ",X)")
 
 
         //   A = A & v
-        //   SetFlags(value: A)
+        //   SetFlags(A)
         //   prn("AND ($"+String(format: "%02X",za)+"),Y")
 }
 
 // LSR
 
-func LSR_i() // 4A
+void LSR_i() // 4A
 {
     CARRY_FLAG = (A & 1) == 1
         A = A >> 1
-        SetFlags(value: A)
+        SetFlags(A)
         prn("LSR")
     }
 
-func LSR_z() // 46
+void LSR_z() // 46
 {
-    let ad = memory.ReadAddress(address: PC)
-        var v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC)
+        var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = ((v & 1) == 1)
         v = v >> 1
-        memory.WriteAddress(address: UInt16(ad), value: v)
-        PC = PC + 1
-        SetFlags(value: v)
+        memory.WriteAddress((UInt16)(ad), v)
+        PC = (UInt16)(PC + 1);
+        SetFlags(v)
         prn("LSR $" + String(format: "%02X", ad))
     }
 
-func LSR_zx() // 56
+void LSR_zx() // 56
 {
 
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
 
 
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         prn("LSR $" + String(format: "%02X", z) + ",X")
     }
 
-func LSR_a() // 4E
+void LSR_a() // 4E
 {
     let ad = getAbsoluteAddress()
-        var v = memory.ReadAddress(address: UInt16(ad))
+        var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         prn("LSR $" + String(format: "%04X", ad))
     }
 
-func LSR_indexed_x() // 5E
+void LSR_indexed_x() // 5E
 {
     let ad = getAbsoluteX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
-        prn("LSR $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
+        prn("LSR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
 // Accumulator OR
 
-func OR_i() // 09
+void OR_i() // 09
 {
     let v = getImmediate()
         A = A | v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("OR #$" + String(format: "%02X", v))
     }
 
-func OR_z() // 5
+void OR_z() // 5
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A | v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("OR $" + String(format: "%02X", ad))
     }
 
-func OR_zx() // 15
+void OR_zx() // 15
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A | v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("OR $" + String(format: "%02X", z) + ",X")
     }
 
-func OR_a() // 0d
+void OR_a() // 0d
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A | v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("OR $" + String(format: "%04X", ad))
     }
 
-func OR_indexed_x() // 1d
+void OR_indexed_x() // 1d
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: (ad))
+        let v = memory.ReadAddress((ad))
         A = A | v
-        SetFlags(value: A)
-        prn("OR $" + String(format: "%04X", ad - UInt16(X)) + ",X")
+        SetFlags(A)
+        prn("OR $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
     }
 
-func OR_indexed_y() // 19
+void OR_indexed_y() // 19
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A | v
-        SetFlags(value: A)
-        prn("OR $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        SetFlags(A)
+        prn("OR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
-func OR_indexed_indirect_x() // 01
+void OR_indexed_indirect_x() // 01
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         A = A | v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("OR ($" + String(format: "%02X", za) + ",X)")
     }
 
-func OR_indirect_indexed_y() // 11
+void OR_indirect_indexed_y() // 11
 {
 
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
         A = A | v
-        SetFlags(value: A)
-        prn("OR ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        SetFlags(A)
+        prn("OR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 // Accumulator EOR
 
-func EOR_i() // 49
+void EOR_i() // 49
 {
     let v = getImmediate()
         A = A ^ v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("EOR #$" + String(format: "%02X", v))
     }
 
-func EOR_z() // 45
+void EOR_z() // 45
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        let v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A ^ v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("EOR $" + String(format: "%02X", ad))
     }
 
-func EOR_zx() // 55
+void EOR_zx() // 55
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("EOR $" + String(format: "%02X", z) + ",X")
     }
 
-func EOR_a() // 4D
+void EOR_a() // 4D
 {
     let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress(address: UInt16(ad))
+        let v = memory.ReadAddress((UInt16)(ad))
         A = A ^ v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("EOR $" + String(format: "%04X", ad))
     }
 
-func EOR_indexed_x() // 5d
+void EOR_indexed_x() // 5d
 {
     let ad = getAbsoluteX()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(value: A)
-        prn("EOR $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        SetFlags(A)
+        prn("EOR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
-func EOR_indexed_y() // 59
+void EOR_indexed_y() // 59
 {
     let ad = getAbsoluteY()
-        let v = memory.ReadAddress(address: ad)
+        let v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(value: A)
-        prn("EOR $" + String(format: "%04X", ad - UInt16(Y)) + ",Y")
+        SetFlags(A)
+        prn("EOR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
-func EOR_indexed_indirect_x() // 41
+void EOR_indexed_indirect_x() // 41
 {
-    let za = memory.ReadAddress(address: PC);
+    let za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         A = A ^ v
-        SetFlags(value: A)
+        SetFlags(A)
         prn("EOR ($" + String(format: "%02X", za) + ",X)")
     }
 
-func EOR_indirect_indexed_y() // 51
+void EOR_indirect_indexed_y() // 51
 {
     let adr = getIndirectY()
-        let v = memory.ReadAddress(address: adr)
+        let v = memory.ReadAddress(adr)
         A = A ^ v
-        SetFlags(value: A)
-        prn("EOR ($" + String(format: "%02X", adr - UInt16(Y)) + "),Y")
+        SetFlags(A)
+        prn("EOR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
 
 
     }
@@ -2026,240 +2116,240 @@ func EOR_indirect_indexed_y() // 51
 
 // ASL
 
-func ASL_i() // 0A
+void ASL_i() // 0A
 {
     CARRY_FLAG = ((A & 128) == 128)
         A = A << 1
-        SetFlags(value: A)
+        SetFlags(A)
         prn("ASL")
     }
 
-func ASL_z() // 06
+void ASL_z() // 06
 {
-    let za = memory.ReadAddress(address: PC)
-        var v = memory.ReadAddress(address: UInt16(za))
+    let za = memory.ReadAddress(PC)
+        var v = memory.ReadAddress((UInt16)(za))
         CARRY_FLAG = ((v & 128) == 128)
         v = v << 1
-        memory.WriteAddress(address: UInt16(za), value: v)
-        PC = PC + 1
-        SetFlags(value: v)
+        memory.WriteAddress((UInt16)(za), v)
+        PC = (UInt16)(PC + 1);
+        SetFlags(v)
         prn("ASL $" + String(format: "%02X", za))
     }
 
-func ASL_zx() // 16
+void ASL_zx() // 16
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
         CARRY_FLAG = ((v & 128) == 128)
         v = v << 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         prn("ASL $" + String(format: "%02X", z) + ",X")
     }
 
-func ASL_a() // 0E
+void ASL_a() // 0E
 {
     let ad = getAbsoluteAddress()
-        var v = memory.ReadAddress(address: UInt16(ad))
+        var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = ((v & 128) == 128)
         v = v << 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         prn("ASL $" + String(format: "%04X", ad))
     }
 
-func ASL_indexed_x() // 1E
+void ASL_indexed_x() // 1E
 {
     let ad = getAbsoluteX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
         CARRY_FLAG = ((v & 128) == 128)
         v = v << 1
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
-        prn("ASL $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
+        prn("ASL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
 
 // ROL
 
-func ROL_i() // 2a
+void ROL_i() // 2a
 {
     let msb = ((A & 128) == 128)
         A = A << 1
         A = A | (CARRY_FLAG ? 1 : 0)
-        SetFlags(value: A)
+        SetFlags(A)
         CARRY_FLAG = msb
         prn("ROL A")
     }
 
-func ROL_z() // 26
+void ROL_z() // 26
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        var v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        var v = memory.ReadAddress((UInt16)(ad))
         let msb = ((v & 128) == 128)
         v = v << 1
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(address: UInt16(ad), value: v)
-        SetFlags(value: v)
+        memory.WriteAddress((UInt16)(ad), v)
+        SetFlags(v)
         CARRY_FLAG = msb
         prn("ROL $" + String(format: "%02X", ad))
     }
 
-func ROL_zx() // 36
+void ROL_zx() // 36
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
 
 
         let msb = ((v & 128) == 128)
         v = v << 1
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = msb
         prn("ROL $" + String(format: "%02X", z) + ",X")
     }
 
-func ROL_a() // 2E
+void ROL_a() // 2E
 {
     let ad = getAbsoluteAddress()
-        var v = memory.ReadAddress(address: UInt16(ad))
+        var v = memory.ReadAddress((UInt16)(ad))
         let msb = ((v & 128) == 128)
         v = v << 1
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = msb
         prn("ROL $" + String(format: "%04X", ad))
     }
 
-func ROL_indexed_x() // 3E
+void ROL_indexed_x() // 3E
 {
     let ad = getAbsoluteX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
         let msb = ((v & 128) == 128)
         v = v << 1
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = msb
-        prn("ROL $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        prn("ROL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 // ROR
 
-func ROR_i() // 6A
+void ROR_i() // 6A
 {
     let lsb = ((A & 1) == 1)
         A = A >> 1
         A = A | (CARRY_FLAG ? 128 : 0)
-        SetFlags(value: A)
+        SetFlags(A)
         CARRY_FLAG = lsb
         prn("ROR A")
     }
 
-func ROR_z() // 66
+void ROR_z() // 66
 {
-    let ad = memory.ReadAddress(address: PC); PC = PC + 1
-        var v = memory.ReadAddress(address: UInt16(ad))
+    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        var v = memory.ReadAddress((UInt16)(ad))
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(address: UInt16(ad), value: v)
-        SetFlags(value: v)
+        memory.WriteAddress((UInt16)(ad), v)
+        SetFlags(v)
         CARRY_FLAG = lsb
         prn("ROR $" + String(format: "%02X", ad))
     }
 
-func ROR_zx() // 76
+void ROR_zx() // 76
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
 
 
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = lsb
         prn("ROR $" + String(format: "%02X", z) + ",X")
     }
 
-func ROR_a() // 6E
+void ROR_a() // 6E
 {
     let ad = getAbsoluteAddress()
-        var v = memory.ReadAddress(address: UInt16(ad))
+        var v = memory.ReadAddress((UInt16)(ad))
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = lsb
         prn("ROR $" + String(format: "%04X", ad))
     }
 
-func ROR_indexed_x() // 7E
+void ROR_indexed_x() // 7E
 {
     let ad = getAbsoluteX()
-        var v = memory.ReadAddress(address: ad)
+        var v = memory.ReadAddress(ad)
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(address: ad, value: v)
-        SetFlags(value: v)
+        memory.WriteAddress(ad, v)
+        SetFlags(v)
         CARRY_FLAG = lsb
-        prn("ROR $" + String(format: "%04X", ad & -UInt16(X)) + ",X")
+        prn("ROR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
 // Store registers in memory
 
-func STX_z() // 86
+void STX_z() // 86
 {
-    let zero_page_address = memory.ReadAddress(address: PC); PC = PC + 1
-        memory.WriteAddress(address: UInt16(zero_page_address), value: X)
+    let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        memory.WriteAddress((UInt16)(zero_page_address), X)
         prn("STX $" + String(format: "%02X", zero_page_address))
     }
 
-func STX_a() // 8e
+void STX_a() // 8e
 {
     let ad = getAbsoluteAddress()
-        memory.WriteAddress(address: UInt16(ad), value: X)
+        memory.WriteAddress((UInt16)(ad), X)
         prn("STX $" + String(format: "%04X", ad))
     }
 
-func STX_ya() // 96
+void STX_ya() // 96
 {
     let adr = getZeroPageY()
-        memory.WriteAddress(address: adr, value: X)
-        prn("STX $#" + String(format: "%02X", adr & -UInt16(Y)) + ",Y")
+        memory.WriteAddress(adr, X)
+        prn("STX $#" + String(format: "%02X", adr & -(UInt16)(Y)) + ",Y")
     }
 
 
-func STY_z() // 84
+void STY_z() // 84
 {
-    let zero_page_address = memory.ReadAddress(address: PC); PC = PC + 1
-        memory.WriteAddress(address: UInt16(zero_page_address), value: Y)
+    let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        memory.WriteAddress((UInt16)(zero_page_address), Y)
         prn("STY $" + String(format: "%02X", zero_page_address))
     }
 
-func STY_a() // 8c
+void STY_a() // 8c
 {
     let ad = getAbsoluteAddress()
-        memory.WriteAddress(address: UInt16(ad), value: Y)
+        memory.WriteAddress((UInt16)(ad), Y)
         prn("STY $" + String(format: "%04X", ad))
     }
 
-func STY_xa() // 94
+void STY_xa() // 94
 {
-    let z = memory.ReadAddress(address: PC)
+    let z = memory.ReadAddress(PC)
         let ad = getZeroPageX()
-        memory.WriteAddress(address: ad, value: Y)
+        memory.WriteAddress(ad, Y)
         prn("STY $#" + String(format: "%02X", z) + ",X")
     }
 
@@ -2267,44 +2357,44 @@ func STY_xa() // 94
 
 // Swapping between registers
 
-func TAX() // AA
+void TAX() // AA
 {
     X = A
-        SetFlags(value: X)
+        SetFlags(X)
         prn("TAX")
     }
 
-func TAY() // A8
+void TAY() // A8
 {
     Y = A
-        SetFlags(value: Y)
+        SetFlags(Y)
         prn("TAY")
     }
 
-func TSX() //BA
+void TSX() //BA
 {
     X = SP
-        SetFlags(value: X)
+        SetFlags(X)
         prn("TSX")
     }
 
-func TXA() // 8A
+void TXA() // 8A
 {
     A = X
-        SetFlags(value: A)
+        SetFlags(A)
         prn("TXA")
     }
 
-func TXS() //9A
+void TXS() //9A
 {
     SP = X
         prn("TXS")
     }
 
-func TYA() // 98
+void TYA() // 98
 {
     A = Y
-        SetFlags(value: A)
+        SetFlags(A)
         prn("TYA")
     }
 
@@ -2315,13 +2405,13 @@ func TYA() // 98
 
 //  ....pushes
 
-func PHA() // 48
+void PHA() // 48
 {
     push(A)
         prn("PHA")
     }
 
-func PHP() // 08
+void PHP() // 08
 {
     BREAK_FLAG = true
         UNUSED_FLAG = true
@@ -2334,14 +2424,14 @@ func PHP() // 08
     }
 
 // 65c02 only
-func PHX() // DA
+void PHX() // DA
 {
     push(X)
         prn("PHX")
     }
 
 // 65c02 only
-func PHY() // 5A
+void PHY() // 5A
 {
     push(Y)
         prn("PHY")
@@ -2350,17 +2440,17 @@ func PHY() // 5A
 
 // .....pulls
 
-func PLA() // 68
+void PLA() // 68
 {
     A = pop()
-        SetFlags(value: A)
+        SetFlags(A)
 
 
         prn("PLA")
     }
 
 
-func PLP() // 28
+void PLP() // 28
 {
     let p = pop()
         SetStatusRegister(reg: p)
@@ -2368,61 +2458,61 @@ func PLP() // 28
     }
 
 // 65c02 only
-func PLX() // FA
+void PLX() // FA
 {
     X = pop()
-        SetFlags(value: X)
+        SetFlags(X)
         prn("PLX")
     }
 
 // 65c02 only
-func PLY() // 7A
+void PLY() // 7A
 {
     Y = pop()
-        SetFlags(value: Y)
+        SetFlags(Y)
         prn("PLY")
     }
 
 
 // Flags
 
-func CLI() // 58
+void CLI() // 58
 {
     INTERRUPT_DISABLE = false
         prn("CLI")
     }
 
-func SEC() // 38
+void SEC() // 38
 {
     CARRY_FLAG = true
         prn("SEC")
     }
 
-func SED() // F8
+void SED() // F8
 {
     DECIMAL_MODE = true
         prn("SED")
     }
 
-func SEI() //78
+void SEI() //78
 {
     INTERRUPT_DISABLE = true
         prn("SEI")
     }
 
-func CLC()
+void CLC()
 {
     CARRY_FLAG = false
         prn("CLC")
     }
 
-func CLV() // B8
+void CLV() // B8
 {
     OVERFLOW_FLAG = false
         prn("CLV")
     }
 
-func CLD() // d8
+void CLD() // d8
 {
     DECIMAL_MODE = false
         prn("CLD")
@@ -2430,7 +2520,7 @@ func CLD() // d8
 
 // Increment & Decrement - they don't care about Decimal Mode
 
-func INY() // CB
+void INY() // CB
 {
     Y = Y & +1
 
@@ -2442,11 +2532,11 @@ func INY() // CB
         //        {
         //            Y = Y + 1
         //        }
-    SetFlags(value: Y)
+    SetFlags(Y)
         prn("INY")
     }
 
-func INX() // E8
+void INX() // E8
 {
     X = X & +1
 
@@ -2458,11 +2548,11 @@ func INX() // E8
         //        {
         //            X = X + 1
         //        }
-    SetFlags(value: X)
+    SetFlags(X)
         prn("INX")
     }
 
-func DEX() // CA
+void DEX() // CA
 {
     X = X & -1
 
@@ -2474,11 +2564,11 @@ func DEX() // CA
         //        {
         //            X = X - 1
         //        }
-    SetFlags(value: X)
+    SetFlags(X)
         prn("DEX")
     }
 
-func DEY() // 88
+void DEY() // 88
 {
     Y = Y & -1
 
@@ -2490,116 +2580,116 @@ func DEY() // 88
         //        {
         //            Y = Y - 1
         //        }
-    SetFlags(value: Y)
+    SetFlags(Y)
         prn("DEY")
     }
 
 
 // Memory dec and inc
 
-func DEC_z() // C6
+void DEC_z() // C6
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
-        var t = memory.ReadAddress(address: UInt16(v))
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        var t = memory.ReadAddress((UInt16)(v))
         if t == 0 { t = 255 } else { t = t - 1 }
-    memory.WriteAddress(address: UInt16(v), value: t)
-        SetFlags(value: t)
+    memory.WriteAddress((UInt16)(v), t)
+        SetFlags(t)
         prn("DEC $" + String(format: "%02X", v))
     }
 
-func DEC_zx() // D6
+void DEC_zx() // D6
 {
     let ad = getZeroPageX()
-        var t = memory.ReadAddress(address: ad)
+        var t = memory.ReadAddress(ad)
         if t == 0 { t = 255 } else { t = t - 1 }
-    memory.WriteAddress(address: ad, value: t)
-        SetFlags(value: t)
-        prn("DEC $" + String(format: "%02X", ad - UInt16(X)) + ",X")
+    memory.WriteAddress(ad, t)
+        SetFlags(t)
+        prn("DEC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
-func DEC_a() // CE
+void DEC_a() // CE
 {
     let v = getAbsoluteAddress()
-        var t = memory.ReadAddress(address: v)
+        var t = memory.ReadAddress(v)
         if t == 0 { t = 255 } else { t = t - 1 }
-    memory.WriteAddress(address: v, value: t)
-        SetFlags(value: t)
+    memory.WriteAddress(v, t)
+        SetFlags(t)
         prn("DEC $" + String(format: "%02X", v))
     }
 
-func DEC_ax() // DE
+void DEC_ax() // DE
 {
     let v = getAbsoluteAddress()
-        var t = memory.ReadAddress(address: v + UInt16(X))
+        var t = memory.ReadAddress(v + (UInt16)(X))
         if t == 0 { t = 255 } else { t = t - 1 }
-    memory.WriteAddress(address: v + UInt16(X), value: t)
-        SetFlags(value: t)
+    memory.WriteAddress(v + (UInt16)(X), t)
+        SetFlags(t)
         prn("DEC $" + String(format: "%04X", v) + ",X")
     }
 
 
-func INC_z() // E6
+void INC_z() // E6
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
-        var t = memory.ReadAddress(address: UInt16(v))
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        var t = memory.ReadAddress((UInt16)(v))
         if t == 255 { t = 0 } else { t = t + 1 }
-    memory.WriteAddress(address: UInt16(v), value: t)
-        SetFlags(value: t)
+    memory.WriteAddress((UInt16)(v), t)
+        SetFlags(t)
         prn("INC $" + String(format: "%02X", v))
     }
 
-func INC_zx() // F6
+void INC_zx() // F6
 {
     let ad = getZeroPageX()
-        var t = memory.ReadAddress(address: ad)
+        var t = memory.ReadAddress(ad)
         if t == 255 { t = 0 } else { t = t + 1 }
-    memory.WriteAddress(address: ad, value: t)
-        SetFlags(value: t)
-        prn("INC $" + String(format: "%02X", ad - UInt16(X)) + ",X")
+    memory.WriteAddress(ad, t)
+        SetFlags(t)
+        prn("INC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
-func INC_a() // EE
+void INC_a() // EE
 {
     let v = getAbsoluteAddress()
-        var t = memory.ReadAddress(address: v)
+        var t = memory.ReadAddress(v)
         if t == 255 { t = 0 } else { t = t + 1 }
-    memory.WriteAddress(address: v, value: t)
-        SetFlags(value: t)
+    memory.WriteAddress(v, t)
+        SetFlags(t)
         prn("INC $" + String(format: "%04X", v))
     }
 
-func INC_ax() // FE
+void INC_ax() // FE
 {
     let v = getAbsoluteAddress()
-        var t = memory.ReadAddress(address: v + UInt16(X))
+        var t = memory.ReadAddress(v + (UInt16)(X))
         if t == 255 { t = 0 } else { t = t + 1 }
-    memory.WriteAddress(address: v + UInt16(X), value: t)
-        SetFlags(value: t)
+    memory.WriteAddress(v + (UInt16)(X), t)
+        SetFlags(t)
         prn("INC $" + String(format: "%04X", v) + ",X")
     }
 
 
 // Branching
 
-func PerformRelativeAddress(jump : (byte))
+void PerformRelativeAddress(jump : (byte))
     {
-    var t = UInt16(jump)
+    var t = (UInt16)(jump)
         var addr = Int(PC) + Int(t)
         if (t & 0x80 == 0x80) { t = 0x100 - t; addr = Int(PC) - Int(t) }
-    PC = UInt16(addr & 0xffff)
+    PC = (UInt16)(addr & 0xffff)
     }
 
 
-func BRA() // 80
+void BRA() // 80
 {
-    let t = memory.ReadAddress(address: PC); PC = PC + 1
+    let t = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         PerformRelativeAddress(jump: t)
         prn("BRA $" + String(t, radix: 16))
     }
 
-func BPL() // 10
+void BPL() // 10
 {
-    let t = memory.ReadAddress(address: PC); PC = PC + 1
+    let t = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
 
 
         if NEGATIVE_FLAG == false
@@ -2609,9 +2699,9 @@ func BPL() // 10
     prn("BPL $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
     }
 
-func BMI() // 30
+void BMI() // 30
 {
-    let t = memory.ReadAddress(address: PC); PC = PC + 1
+    let t = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         if NEGATIVE_FLAG == true
         {
         PerformRelativeAddress(jump: t)
@@ -2619,9 +2709,9 @@ func BMI() // 30
     prn("BMI $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
     }
 
-func BVC() // 50
+void BVC() // 50
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if !OVERFLOW_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2629,9 +2719,9 @@ func BVC() // 50
     prn("BVC $" + String(t, radix: 16))
     }
 
-func BVS() // 70
+void BVS() // 70
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if OVERFLOW_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2639,9 +2729,9 @@ func BVS() // 70
     prn("BVS $" + String(t, radix: 16))
     }
 
-func BCC() // 90
+void BCC() // 90
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if !CARRY_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2649,9 +2739,9 @@ func BCC() // 90
     prn("BCC $" + String(format: "%02X", t))
     }
 
-func BCS() // B0
+void BCS() // B0
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if CARRY_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2659,9 +2749,9 @@ func BCS() // B0
     prn("BCS $" + String(format: "%02X", t))
     }
 
-func BEQ() // F0
+void BEQ() // F0
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if ZERO_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2669,9 +2759,9 @@ func BEQ() // F0
     prn("BEQ $" + String(format: "%02X", t))
     }
 
-func BNE() // D0
+void BNE() // D0
 {
-    let t = (memory.ReadAddress(address: PC)); PC = PC + 1
+    let t = (memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
         if !ZERO_FLAG
         {
         PerformRelativeAddress(jump: t)
@@ -2682,7 +2772,7 @@ func BNE() // D0
 
 // Jumping
 
-func JMP_ABS() // 4c
+void JMP_ABS() // 4c
 {
     let ad = getAbsoluteAddress()
         PC = ad
@@ -2690,7 +2780,7 @@ func JMP_ABS() // 4c
     }
 
 // buggy plop // 6502 bug here
-func JMP_REL() // 6c
+void JMP_REL() // 6c
 {
     let ad = getAbsoluteAddress()
         let target = getAddress(ad)
@@ -2701,7 +2791,7 @@ func JMP_REL() // 6c
     }
 
 
-func JSR() // 20
+void JSR() // 20
 {
     // updated to push the H byte first, as per actual 6502!
 
@@ -2722,10 +2812,10 @@ func JSR() // 20
         prn("JSR $" + String(format: "%04X", target))
     }
 
-func RTS() // 60
+void RTS() // 60
 {
-    let l = UInt16(pop())
-        let h = UInt16(pop())
+    let l = (UInt16)(pop())
+        let h = (UInt16)(pop())
         PC = 1 + (h << 8) & +l
         prn("RTS")
     }
@@ -2734,60 +2824,60 @@ func RTS() // 60
 
 // Addressing modes
 
-func getAbsoluteX() -> UInt16
+void getAbsoluteX() -> UInt16
 {
-    let ad = getAbsoluteAddress() & +UInt16(X)
+    let ad = getAbsoluteAddress() & +(UInt16)(X)
         return ad
     }
 
-func getAbsoluteY() -> UInt16
+void getAbsoluteY() -> UInt16
 {
-    let ad = getAbsoluteAddress() & +UInt16(Y)
+    let ad = getAbsoluteAddress() & +(UInt16)(Y)
         return ad
     }
 
-func getImmediate() -> (byte)
+void getImmediate() -> (byte)
 {
-    let v = memory.ReadAddress(address: PC); PC = PC + 1
+    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         return v
     }
 
-func getZeroPageX() -> UInt16
+void getZeroPageX() -> UInt16
 {
-    let adr = UInt16(memory.ReadAddress(address: PC)) + UInt16(X)
-        PC = PC + 1
+    let adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(X)
+        PC = (UInt16)(PC + 1);
         return (adr & 0xff)
     }
 
-func getZeroPageY() -> UInt16
+void getZeroPageY() -> UInt16
 {
-    let adr = UInt16(memory.ReadAddress(address: PC)) + UInt16(Y)
-        PC = PC + 1
+    let adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(Y)
+        PC = (UInt16)(PC + 1);
         return (adr & 0xff)
     }
 
 
-func getIndirectX() -> UInt16 // used by 61, ADC_Indexed_Indirect_X
+void getIndirectX() -> UInt16 // used by 61, ADC_Indexed_Indirect_X
 {
-    let eah = (UInt16(memory.ReadAddress(address: PC)) & +UInt16(X)) & 0xff
-        let adr = UInt16(memory.ReadAddress(address: (eah & 0x00ff)))
+    let eah = ((UInt16)(memory.ReadAddress(PC)) & +(UInt16)(X)) & 0xff
+        let adr = (UInt16)(memory.ReadAddress((eah & 0x00ff)))
             |
-            UInt16(memory.ReadAddress(address: ((eah & +1) & 0x00ff))) << 8
-        PC = PC + 1
+            (UInt16)(memory.ReadAddress(((eah & +1) & 0x00ff))) << 8
+        PC = (UInt16)(PC + 1);
         return adr
 
 
     }
 
-func getIndirectY() -> UInt16  // (indirect),Y // Indexed_Indirect_Y
+void getIndirectY() -> UInt16  // (indirect),Y // Indexed_Indirect_Y
 {
 
-    let ial = UInt16(memory.ReadAddress(address: PC)); PC = PC + 1
-        let bal = UInt16(memory.ReadAddress(address: (UInt16(0xFF & ial))))
-        let bah = UInt16(memory.ReadAddress(address: (UInt16(0xFF & (ial & +1)))))
+    let ial = (UInt16)(memory.ReadAddress(PC)); PC = (UInt16)(PC + 1);
+        let bal = (UInt16)(memory.ReadAddress(((UInt16)(0xFF & ial))))
+        let bah = (UInt16)(memory.ReadAddress(((UInt16)(0xFF & (ial & +1)))))
 
 
-        let ea = bah << 8 & +bal & +UInt16(Y)
+        let ea = bah << 8 & +bal & +(UInt16)(Y)
 
 
         return ea
@@ -2795,49 +2885,49 @@ func getIndirectY() -> UInt16  // (indirect),Y // Indexed_Indirect_Y
 
     }
 
-func get_indexed_indirect_zp_x_address() -> UInt16
+void get_indexed_indirect_zp_x_address() -> UInt16
 { /// 01, 21, 41, 61, 81, a1, c1, e1,
-    let fi = memory.ReadAddress(address: PC); PC = PC + 1
-        let bal : UInt16 = UInt16(fi) + UInt16(X)
-        let adl = UInt16(memory.ReadAddress(address: 0xFF & bal))
-        let adh = UInt16(memory.ReadAddress(address: 0xFF & (bal + 1)))
+    let fi = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        let bal : UInt16 = (UInt16)(fi) + (UInt16)(X)
+        let adl = (UInt16)(memory.ReadAddress(0xFF & bal))
+        let adh = (UInt16)(memory.ReadAddress(0xFF & (bal + 1)))
         let adr = (adh << 8) + adl
         return adr
 
 
     }
 
-func get_indexed_indirect_zp_x() -> (byte)
+void get_indexed_indirect_zp_x() -> (byte)
 { /// 01, 21, 41, 61, 81, a1, c1, e1,
-    return memory.ReadAddress(address: get_indexed_indirect_zp_x_address())
+    return memory.ReadAddress(get_indexed_indirect_zp_x_address())
     }
 
 
-func push(_ v : (byte))
+void push(_ v : (byte))
     {
-    memory.WriteAddress(address: UInt16(0x100 + UInt16(SP)), value: v)
+    memory.WriteAddress((UInt16)(0x100 + (UInt16)(SP)), v)
         SP = SP & -1
     }
 
-func pop() -> (byte)
+void pop() -> (byte)
 {
     SP = SP & +1
-        let v = memory.ReadAddress(address: UInt16(0x100 + UInt16(SP)))
+        let v = memory.ReadAddress((UInt16)(0x100 + (UInt16)(SP)))
         return v
     }
 
 
 
-func addC(_ n2: (byte))
+void addC(_ n2: (byte))
     {
 
     let c : UInt16 = (CARRY_FLAG == true) ? 1 : 0
-        let value = UInt16(n2)
+        let value = (UInt16)(n2)
 
 
         if !DECIMAL_MODE
         {
-        let total = UInt16(A) + value + c
+        let total = (UInt16)(A) + value + c
 
 
             if (total > 255)
@@ -2874,7 +2964,7 @@ func addC(_ n2: (byte))
         }
 
         A = (byte)(total & 0xFF)
-            SetFlags(value: A)
+            SetFlags(A)
 
 
             return
@@ -2891,7 +2981,7 @@ func addC(_ n2: (byte))
 
 }
 
-func ADCDecimalImplementation(s : (byte))
+void ADCDecimalImplementation(s : (byte))
     {
     // s = value to be added to accumulator
 
@@ -2918,13 +3008,13 @@ func ADCDecimalImplementation(s : (byte))
     // Calculate accumulator
     A = ((AH << 4) | (AL & 15)) & 255;
 
-    SetFlags(value: A)
+    SetFlags(A)
 
 
     }
 
 
-func subC(_ local_data: (byte))
+void subC(_ local_data: (byte))
     {
     var total : UInt16 = 0
         var bcd_low : UInt16 = 0;
@@ -2944,16 +3034,16 @@ func subC(_ local_data: (byte))
 
     if DECIMAL_MODE
         {
-        // bcd_low  = UInt16((0x0F & register_a) &- (0x0F & local_data) &- flag_c_invert)
+        // bcd_low  = (UInt16)((0x0F & register_a) &- (0x0F & local_data) &- flag_c_invert)
 
 
-        bcd_low = 0xffff & (UInt16(0x0F & register_a) & -UInt16(0x0F & local_data) & -UInt16(flag_c_invert))
+        bcd_low = 0xffff & ((UInt16)(0x0F & register_a) & -(UInt16)(0x0F & local_data) & -(UInt16)(flag_c_invert))
 
 
             if (bcd_low > 0x09) { low_carry = 0x10; bcd_low = bcd_low & +0x0A; }
 
-        bcd_high = UInt16(0xF0 & register_a) & -UInt16(0xF0 & local_data) & -UInt16(low_carry)
-            //bcd_high = UInt16((0xF0 & register_a) &- (0xF0 & local_data)) &- UInt16(low_carry)
+        bcd_high = (UInt16)(0xF0 & register_a) & -(UInt16)(0xF0 & local_data) & -(UInt16)(low_carry)
+            //bcd_high = (UInt16)((0xF0 & register_a) &- (0xF0 & local_data)) &- (UInt16)(low_carry)
             if (bcd_high > 0x90) { high_carry = 1; bcd_high = bcd_high & +0xA0; }
 
         CARRY_FLAG = false  // register_flags = register_flags & 0xFE;              // Clear the C flag
@@ -2967,7 +3057,7 @@ func subC(_ local_data: (byte))
         }
     else
     {
-        total = UInt16(register_a) & -UInt16(local_data) & -UInt16(flag_c_invert)
+        total = (UInt16)(register_a) & -(UInt16)(local_data) & -(UInt16)(flag_c_invert)
             signed_total = Int16(register_a) - Int16(local_data) - Int16(flag_c_invert)
 
 
@@ -3008,12 +3098,12 @@ func subC(_ local_data: (byte))
     A = (byte)((0xFF & total))
 
 
-        SetFlags(value: A)
+        SetFlags(A)
 
 
     }
 
-func addC2(_ local_data: (byte))
+void addC2(_ local_data: (byte))
     {
     var total : UInt16 = 0
         var bcd_low : UInt16 = 0;
@@ -3033,14 +3123,14 @@ func addC2(_ local_data: (byte))
 
     if DECIMAL_MODE
         {
-        //bcd_low  = UInt16(0x0F & register_a) &+ UInt16(0x0F & local_data) &+ UInt16(flag_c)
-        bcd_low = UInt16((0x0F & register_a) + (0x0F & local_data) + (flag_c))
+        //bcd_low  = (UInt16)(0x0F & register_a) &+ (UInt16)(0x0F & local_data) &+ (UInt16)(flag_c)
+        bcd_low = (UInt16)((0x0F & register_a) + (0x0F & local_data) + (flag_c))
 
 
             if (bcd_low > 0x09) { low_carry = 0x10; bcd_low = bcd_low & -0x0A; }
 
-        // bcd_high = UInt16(0xF0 & register_a) &+ UInt16(0xF0 & local_data) &+ UInt16(low_carry)
-        bcd_high = UInt16((0xF0 & register_a) + (0xF0 & local_data) + (low_carry))
+        // bcd_high = (UInt16)(0xF0 & register_a) &+ (UInt16)(0xF0 & local_data) &+ (UInt16)(low_carry)
+        bcd_high = (UInt16)((0xF0 & register_a) + (0xF0 & local_data) + (low_carry))
 
 
             if (bcd_high > 0x90) { high_carry = 1; bcd_high = bcd_high & -0xA0; }
@@ -3057,7 +3147,7 @@ func addC2(_ local_data: (byte))
         }
     else
     {
-        total = UInt16(register_a) + UInt16(local_data) + UInt16(flag_c)
+        total = (UInt16)(register_a) + (UInt16)(local_data) + (UInt16)(flag_c)
             if (total >= 255)
         {
             // Set the C flag
@@ -3096,19 +3186,19 @@ func addC2(_ local_data: (byte))
 
 
 
-        SetFlags(value: A)
+        SetFlags(A)
 
 
     }
 
 
 // Fisxed the non-Decimal mode Overflow Flag issue
-func subC2(_ n2: (byte))
+void subC2(_ n2: (byte))
     {
 
     let c : UInt16 = (CARRY_FLAG == true) ? 0 : 1
-        let value = UInt16(n2)
-        let total = UInt16(A) & -UInt16(value) & -UInt16(c)
+        let value = (UInt16)(n2)
+        let total = (UInt16)(A) & -(UInt16)(value) & -(UInt16)(c)
         let signed_total = Int16(A) - Int16(value) - Int16(c)
 
 
@@ -3146,7 +3236,7 @@ func subC2(_ n2: (byte))
     }
 
     A = (byte)(total & 0xFF)
-        SetFlags(value: A)
+        SetFlags(A)
 
 
         if DECIMAL_MODE
@@ -3162,22 +3252,22 @@ func subC2(_ n2: (byte))
         // but the algorithm stated doesn't provide enough information on
         // bit sizes of variables etc of variables to get to work.
 
-        let value = UInt16(n2)
+        let value = (UInt16)(n2)
 
 
-            let t1 = UInt16(A & 0x0f)
-            let t2 = UInt16((n2 & 0x0f))
+            let t1 = (UInt16)(A & 0x0f)
+            let t2 = (UInt16)((n2 & 0x0f))
             let t3 = Int(t1) - Int(t2) - Int(c)
-            var lxx = UInt16(t3 & 0x00ff)
+            var lxx = (UInt16)(t3 & 0x00ff)
 
 
             if ((lxx & 0x10) != 0) { lxx = lxx - 6}
 
-        let t4 = (UInt16(A) >> 4)
+        let t4 = ((UInt16)(A) >> 4)
             let t5 = (value >> 4)
             let t6 = ((lxx & 0x10) != 0 ? 1 : 0)
             let t7 = Int(t4) - Int(t5) - Int(t6)
-            var hxx = UInt16(t7 & 0x00ff)
+            var hxx = (UInt16)(t7 & 0x00ff)
 
 
             if ((hxx & 0x10) != 0) { hxx = hxx - 6 }
@@ -3204,7 +3294,7 @@ func subC2(_ n2: (byte))
             OVERFLOW_FLAG = false
             }
 
-        SetFlags(value: A)
+        SetFlags(A)
             return
 
 
@@ -3213,7 +3303,7 @@ func subC2(_ n2: (byte))
     else
     {
         A = (byte)(result & 0xFF)
-            SetFlags(value: A)
+            SetFlags(A)
         }
 }
 
@@ -3223,7 +3313,7 @@ func subC2(_ n2: (byte))
 // Called by the UI to pass on keyboard status
 // so that the CPU could query it.
 
-func SetKeypress(keyPress : Bool, keyNum: (byte))
+void SetKeypress(keyPress : Bool, keyNum: (byte))
     {
     kim_keyActive = keyPress
         kim_keyNumber = keyNum
@@ -3233,7 +3323,7 @@ func SetKeypress(keyPress : Bool, keyNum: (byte))
 
 
 // Debug message utility
-func prn(_ message : String)
+void prn(_ message : String)
     {
     let ins = String(message).padding(toLength: 12, withPad: " ", startingAt: 0)
         statusmessage = ins
