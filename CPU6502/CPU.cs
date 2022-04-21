@@ -40,14 +40,45 @@ namespace CPU6502
         {
             memory.WriteAddress((UInt16)(0x100 + (UInt16)(SP)), v);
             SP = (byte)(SP - 1);
-            }
+        }
 
-        byte pop() 
+        byte pop()
         {
             SP = (byte)(SP + 1);
             return memory.ReadAddress(address: (UInt16)(0x100 + (UInt16)(SP)));
-        
+
         }
+
+        byte GetStatusRegister()
+        {
+            byte sr = 0;
+
+            if (CARRY_FLAG) { sr = 1; };
+            if (ZERO_FLAG) { sr = (byte)(sr + 2); };
+            if (INTERRUPT_DISABLE) { sr = (byte)(sr + 4); };
+            if (DECIMAL_MODE) { sr = (byte)(sr + 8); };
+            if (BREAK_FLAG) { sr = (byte)(sr + 16); };
+            if (OVERFLOW_FLAG) { sr = (byte)(sr + 64); };
+            if (NEGATIVE_FLAG) { sr = (byte)(sr + 128); };
+
+            return sr;
+        }
+
+        void MachineStatus()
+        {
+            // a unique kim feature that copies the registers into memory
+            // to be examined later by the user if they so wish.
+
+
+            memory.WriteAddress(0xEF, (byte)(PC & 255));
+            memory.WriteAddress(0xF0, (byte)(PC >> 8));
+            memory.WriteAddress(0xF1, GetStatusRegister());
+            memory.WriteAddress(0xF2, SP);
+            memory.WriteAddress(0xF3, A);
+            memory.WriteAddress(0xF4, Y);
+            memory.WriteAddress(0xF5, X);
+        }
+
 
 
         void RESET()
@@ -67,15 +98,628 @@ namespace CPU6502
             // This is the 6502 Interrupt signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
             // IRQ is trigged on the 6502 bus and not by anything the KIM-1 does with standard hardware
 
-            var h = (byte)(PC >> 8); push(h)
-            var l = (byte)(PC & 0x00FF); push(l)
+            byte h = (byte)(PC >> 8); push(h);
+            byte l = (byte)(PC & 0x00FF); push(l);
             push(GetStatusRegister());
             INTERRUPT_DISABLE = true;
             PC = getAddress(0x17FE);                    // KIM-1 thing
         }
 
+        void NMI()
+        {
+            // This is the 6502 Non-maskable Interrupt signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
+            // NMI is called when the user presses Stop and SST button
 
-        public CPU()
+            byte h = (byte)(PC >> 8); push(h);
+            byte l = (byte)(PC & 0x00FF); push(l);
+            push(GetStatusRegister());
+            INTERRUPT_DISABLE = true;
+            PC = getAddress(0x17FA);  //PC = getAddress(0xFFEA) if there was complete memory decoding
+            MachineStatus();
+
+
+        }
+
+        void BRK()
+        {
+            // This is the 6502 BRK signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
+            PC = (ushort)(PC + 1);
+            byte h = (byte)(PC >> 8); push(h);
+            byte l = (byte)(PC & 0x00FF); push(l);
+            push(GetStatusRegister());
+            PC = getAddress(0x17FA);
+            //breakpoint = true;
+        }
+
+        byte Read(UInt16 address)
+        {
+            return memory.ReadAddress(address);
+        }
+
+        void Write(UInt16 address, byte data)
+        {
+            memory.WriteAddress(address, data);
+        }
+
+        void SetStatusRegister(byte reg)
+        {
+            CARRY_FLAG = (reg & 1) == 1;
+            ZERO_FLAG = (reg & 2) == 2;
+            INTERRUPT_DISABLE = (reg & 4) == 4;
+            DECIMAL_MODE = (reg & 8) == 8;
+            BREAK_FLAG = (reg & 16) == 16;
+            OVERFLOW_FLAG = (reg & 64) == 64;
+            NEGATIVE_FLAG = (reg & 64) == 128;
+        }
+
+        void SetPC(UInt16 ProgramCounter)
+        {
+            PC = ProgramCounter;
+        }
+
+        UInt16 GetPC()
+        {
+            return PC;
+        }
+
+        bool Execute()
+        {
+            // Use the PC to read the instruction (and other data if required) and
+            // execute the instruction.
+
+            byte ins = memory.ReadAddress(PC);
+
+
+            if (PC == 0xffff)
+            {
+                PC = 0;
+            }
+            else
+            {
+                PC = (UInt16)(PC + 1);
+            }
+            return ProcessInstruction(ins);
+        }
+    
+
+
+
+byte getA() 
+{
+            return A;
+}
+
+byte getX()
+{
+            return X;
+    }
+
+byte getY() 
+{
+            return Y;
+    }
+
+bool NotInROM() 
+{
+    // Used by the SST to skip over ROM code
+
+    if (PC < 0x1C00)
+        {
+                return true;
+        }
+    else
+    {
+                return false;
+        }
+
+}
+
+UInt16 getAbsoluteAddress()
+{
+            // Get 16 bit address from current PC
+            UInt16 l = memory.ReadAddress(PC);
+        PC = (UInt16)(PC + 1);
+            UInt16 h = memory.ReadAddress(PC);
+            PC = (UInt16)(PC + 1);
+            return (UInt16)(h << 8 | l);
+    }
+
+
+void SetFlags(byte value)
+    {
+    if (value == 0)
+        {
+                ZERO_FLAG = true;
+        }
+    else
+    {
+                ZERO_FLAG = false;
+        }
+
+    if ((value & 0x80) == 0x80)
+        {
+                NEGATIVE_FLAG = true;
+        }
+        else
+    {
+                NEGATIVE_FLAG = false;
+        }
+
+}
+
+
+bool ProcessInstruction(byte instruction )
+{
+
+    switch (instruction) {
+
+        case 0:
+                    BRK(); break;
+        case 1:
+                    OR_indexed_indirect_x(); break;
+
+
+        case 5:
+                    OR_z();
+        case 06:
+                    ASL_z();
+
+
+        case 8:
+            PHP()
+        case 9:
+            OR_i();
+        case 0x0A:
+            ASL_i();
+
+
+        case 0x0D:
+            OR_a();
+        case 0x0E:
+            ASL_a();
+
+
+        case 0x10:
+            BPL();
+        case 0x11:
+            OR_indirect_indexed_y();
+
+
+        case 0x15:
+            OR_zx();
+        case 0x16:
+            ASL_zx();
+        case 0x18:
+            CLC();
+        case 0x19:
+            OR_indexed_y();
+
+
+        case 0x1D:
+            OR_indexed_x();
+        case 0x1E:
+            ASL_indexed_x();
+
+
+        case 0x20:
+            JSR();
+        case 0x21:
+            AND_indexed_indirect_x();
+
+
+        case 0x24:
+            BIT_z();
+        case 0x25:
+            AND_z();
+        case 0x26:
+            ROL_z();
+
+
+
+        case 0x28:
+            PLP();
+        case 0x29:
+            AND_i();
+        case 0x2A:
+            ROL_i();
+
+
+        case 0x2C:
+            BIT_a();
+        case 0x2D:
+            AND_a();
+        case 0x2E:
+            ROL_a();
+
+
+        case 0x30:
+            BMI();
+        case 0x31:
+            AND_indirect_indexed_y();
+
+
+        case 0x35:
+            AND_zx();
+        case 0x36:
+            ROL_zx();
+
+
+        case 0x38:
+            SEC();
+        case 0x39:
+            AND_indexed_y();
+
+
+        case 0x3D:
+            AND_indexed_x();
+        case 0x3E:
+            ROL_indexed_x();
+
+
+        case 0x40:
+            RTI();
+        case 0x41:
+            EOR_indexed_indirect_x();
+
+
+        case 0x45:
+            EOR_z();
+        case 0x46:
+            LSR_z();
+
+
+        case 0x48:
+            PHA();
+        case 0x49:
+            EOR_i();
+        case 0x4A:
+            LSR_i();
+
+
+
+        case 0x4C:
+            JMP_ABS();
+        case 0x4D:
+            EOR_a();
+        case 0x4E:
+            LSR_a();
+
+
+        case 0x50:
+            BVC();
+        case 0x51:
+            EOR_indirect_indexed_y();
+
+
+        case 0x55:
+            EOR_zx();
+        case 0x56:
+            LSR_zx();
+
+
+        case 0x58:
+            CLI();
+        case 0x59:
+            EOR_indexed_y();
+
+
+        case 0x5A:
+            PHY();
+
+
+        case 0x5D:
+            EOR_indexed_x();
+        case 0x5E:
+            LSR_indexed_x();
+
+
+
+        case 0x60:
+            RTS();
+        case 0x61:
+            ADC_indexed_indirect_x();
+
+
+        case 0x65:
+            ADC_z();
+        case 0x66:
+            ROR_z();
+
+
+        case 0x68:
+            PLA();
+        case 0x69:
+            ADC_i();
+        case 0x6A:
+            ROR_i();
+
+
+        case 0x6D:
+            ADC_a();
+        case 0x6E:
+            ROR_a();
+
+
+        case 0x70:
+            BVS();
+        case 0x71:
+            ADC_indirect_indexed_y();
+
+
+        case 0x75:
+            ADC_zx();
+        case 0x76:
+            ROR_zx();
+
+
+        case 0x78:
+            SEI();
+        case 0x79:
+            ADC_indexed_y();
+        case 0x7A:
+            PLY();
+
+
+        case 0x7D:
+            ADC_indexed_x();
+        case 0x7E:
+            ROR_indexed_x();
+
+
+        case 0x6C:
+            JMP_REL();
+
+
+        case 0x72:
+            ADC_indirect_indexed_y();
+
+
+        case 0x80:
+            BRA(); // 65C02
+        case 0x81:
+            STA_indexed_indirect_x();
+
+
+        case 0x84:
+            STY_z();
+        case 0x85:
+            STA_z();
+        case 0x86:
+            STX_z();
+
+
+        case 0x88:
+            DEY();
+
+       // case 0x89: BIT(); 6502c only
+
+        case 0x8A:
+            TXA();
+
+
+        case 0x8C:
+            STY_a();
+        case 0x8D:
+            STA_a();
+        case 0x8E:
+            STX_a();
+
+
+        case 0x90:
+            BCC();
+        case 0x91:
+            STA_indirect_indexed_y();
+
+
+        case 0x94:
+            STY_xa();
+        case 0x95:
+            STA_zx();
+        case 0x96:
+            STX_ya();
+
+
+        case 0x98:
+            TYA();
+        case 0x99:
+            STA_indexed_y();
+        case 0x9A:
+            TXS();
+
+
+        case 0x9D:
+            STA_indexed_x();
+
+
+        case 0xA0:
+            LDY_i();
+        case 0xA1:
+            LDA_indexed_indirect_x();
+        case 0xA2:
+            LDX_i();
+
+
+        case 0xA4:
+            LDY_z();
+        case 0xA5:
+            LDA_z();
+        case 0xA6:
+            LDX_z();
+
+
+        case 0xA8:
+            TAY();
+        case 0xA9:
+            LDA_i();
+
+
+        case 0xAA:
+            TAX();
+
+
+        case 0xAC:
+            LDY_a();
+        case 0xAD:
+            LDA_a();
+        case 0xAE:
+            LDX_a();
+
+
+        case 0xB0:
+            BCS();
+        case 0xB1:
+            LDA_indirect_indexed_y();
+
+
+        case 0xB4:
+            LDY_zx();
+        case 0xB5:
+            LDA_zx();
+        case 0xB6:
+            LDX_zy();
+
+
+        case 0xB8:
+            CLV();
+        case 0xB9:
+            LDA_indexed_y();
+        case 0xBA:
+            TSX();
+
+
+        case 0xBC:
+            LDY_indexed_x();
+        case 0xBD:
+            LDA_indexed_x();
+        case 0xBE:
+            LDX_indexed_y();
+
+
+
+        case 0xC0:
+            CPY_i();
+        case 0xC1:
+            CMP_indexed_indirect_x();
+
+
+        case 0xC4:
+            CPY_z();
+        case 0xC5:
+            CMP_z();
+        case 0xC6:
+            DEC_z();
+
+
+        case 0xC8:
+            INY();       // Incorrect in Assembly Lines book (gasp)
+        case 0xC9:
+            CMP_i();
+        case 0xCA:
+            DEX();
+
+
+        case 0xCC:
+            CPY_A();
+        case 0xCD:
+            CMP_a();
+        case 0xCE:
+            DEC_a();
+
+
+        case 0xD0:
+            BNE();
+        case 0xD1:
+            CMP_indirect_indexed_y();
+
+
+        case 0xD5:
+            CMP_zx();
+        case 0xD6:
+            DEC_zx();
+
+
+        case 0xD8:
+            CLD();
+        case 0xD9:
+            CMP_indexed_y();
+        case 0xDA:
+            PHX();
+
+
+        case 0xDD:
+            CMP_indexed_x();
+        case 0xDE:
+            DEC_ax();
+
+
+        case 0xE0:
+            CPX_i();
+        case 0xE1:
+            SBC_indexed_indirect_x();
+
+
+        case 0xE4:
+            CPX_z();
+        case 0xE5:
+            SBC_z();
+        case 0xE6:
+            INC_z();
+
+
+        case 0xE8:
+            INX();
+        case 0xE9:
+            SBC_i();
+        case 0xEA:
+            NOP();
+
+
+        case 0xEC:
+            CPX_A();
+        case 0xED:
+            SBC_a();
+        case 0xEE:
+            INC_a();
+
+
+        case 0xF0:
+            BEQ();
+        case 0xF1:
+            SBC_indirect_indexed_y();
+
+
+        case 0xF5:
+            SBC_zx();
+        case 0xF6:
+            INC_zx();
+
+
+        case 0xF8:
+            SED();
+        case 0xF9:
+            SBC_indexed_y();
+        case 0xFA:
+            PLX();
+
+
+        case 0xFD:
+            SBC_indexed_x();
+        case 0xFE:
+            INC_ax();
+
+
+        default:
+            return false
+
+
+        }
+
+    return true
+    }
+
+
+
+public CPU();
         {
         }
     }
@@ -83,74 +727,12 @@ namespace CPU6502
 
 /*
 
-//
-//  CPU.swift
-//  VirtualKim
-//
-//  Created by John Kennedy on 1/8/21.
-//
-// 6502 implementation with as few KIM-1 or iOS specific features as possible
-//
-// prn() function gathers debug information for optional output.
-//
-// Note: This 6502 not take the varying length of time of each opcode takes to execute into account.
-// It should use a lookup table for each instruction, get the cycle count, and do a NOP or two (or 8)
-// if required. However, it's unlikely this will ever be necessary.
-//
 
-// Debug phase 1.0
-// ADC, SBC, ROR
-// Addressing modes for ADC, ASC with larger wrapping numbers and special 0x80 case
-// CMP seems ok
-// BIT Fixed
-
-// Phase 1.1
-
-// (zp,x) addressing issue fixed
-// (Not sure about ADC)
-
-// Phase 1.2
-// Corrected ADC SBC for all valid BCD values. Hint: that isn't 100%
-
-// Phase 1.3
-// Corrected some addressing mode shennanighans
-
-// Phase 1.4
-// Corrected get_indexed_indirect_zp_x being used where should have been Y
-// Trying recreation of 6502 jump relative wrap bug
-
-// Phase 2.0
-// Working through the test suite and making fixes
-
-// Phase 2.1
-// More indexed indirect issues resolved - swapping 79/74 opcodes (DOH) and it seems to be working!
-// The 6502 passes emulation test suites! (the one that excludes decimal mode anyway)
-
-import Foundation
-
-
-// Registers and flags
-private var PC : UInt16 = 0x1c22
-private var SP : UInt8 = 0xfe // of fd?
-private var A : UInt8 = 0
-private var X : UInt8 = 0
-private var Y : UInt8 = 0
-private var CARRY_FLAG : Bool = false
-private var ZERO_FLAG : Bool = false
-private var OVERFLOW_FLAG : Bool = false
-private var INTERRUPT_DISABLE : Bool = false
-private var DECIMAL_MODE : Bool = false
-private var NEGATIVE_FLAG : Bool = false
-private var BREAK_FLAG : Bool = false
-private var UNUSED_FLAG : Bool = true
-private var RUNTIME_DEBUG_MESSAGES : Bool = false
-
-private var DEFAULT_SP : UInt8 = 0xFE
 
 private var kim_keyActive : Bool = false           // Used when providing KIM-1 keyboard support
-private var kim_keyNumber : UInt8 = 0xff
+private var kim_keyNumber : (byte) = 0xff
 
-private var memory = memory_64Kb()                  // Implemention of memory map, including RAM and ROM
+private var memory = memory_64Kb();                  // Implemention of memory map, including RAM and ROM
 
 private var dataToDisplay = false                   // Used by the SwiftUI wrapper
 private var running = false                         // to know if we're running and if something needs displayed on the "LEDs"
@@ -168,73 +750,11 @@ private var APPLE_ACTIVE = false                // Running in Apple 1 mode rathe
 class CPU {
     
     //    Addressing modes explained: http://www.emulator101.com/6502-addressing-modes.html
-    
-    //    Interrupt vectors on the KIM-1 are mapped slightly differently than the 6502
-    //    by the memory addressing hardware, as there isn't anything at 0xFFXX as there
-    //    might be in an idealistic 6502 system.
-    //    Quote: In the KIM-1 system, three address bits (AB13, AB14, ABl5) are not
-    //    decoded at all.  Therefore, when the 6502 array generates a fetch from
-    //    FFFC and FFFD in response to a RST input, these addresses will be read
-    //    as 1FFC and 1FFD and the reset vector will be fetched from these locations.
-    //    You now see that all interrupt vectors will be fetched from the top 6
-    //    locations of the lowest 8K block of memory which is the only memory block
-    //    decoded for the unexpanded KIM-1 system.
-    
-    // To make SST work, needs to know not to SST the ROM Monitor somehow or that would
-    // be recursive and the world might end.
+
+   
+  
     
    
-    
-    func RESET()
-    {
-        // This is the 6502 Reset signal - RST
-        // It's "turning it off and on again"
-        A = 0
-        X = 0
-        Y = 0
-        SP = DEFAULT_SP
-        PC = getAddress(0x17FC) //PC = getAddress(0xFFFC)
-        INTERRUPT_DISABLE = false
-    }
-    
-    func IRQ()
-    {
-        // This is the 6502 Interrupt signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
-        // IRQ is trigged on the 6502 bus and not by anything the KIM-1 does with standard hardware
-        
-        let h = UInt8(PC >> 8); push(h)
-        let l = UInt8(PC & 0x00FF); push(l)
-        push(GetStatusRegister())
-        INTERRUPT_DISABLE = true
-        //PC = getAddress(0xFFEE) if there was complete memory decoding, which there isn't on the KIM-1
-        PC = getAddress(0x17FE)
-    }
-    
-    func NMI()
-    {
-        // This is the 6502 Non-maskable Interrupt signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
-        // NMI is called when the user presses Stop and SST button
-        
-        let h = UInt8(PC >> 8); push(h)
-        let l = UInt8(PC & 0x00FF); push(l)
-        push(GetStatusRegister())
-        INTERRUPT_DISABLE = true
-        PC = getAddress(0x17FA)  //PC = getAddress(0xFFEA) if there was complete memory decoding
-        MachineStatus()
-        
-    }
-    
-    func BRK()
-    {
-        // This is the 6502 BRK signal - see https://en.wikipedia.org/wiki/Interrupts_in_65xx_processors
-        PC = PC + 1
-        let h = UInt8(PC >> 8); push(h)
-        let l = UInt8(PC & 0x00FF); push(l)
-        push(GetStatusRegister())
-       // INTERRUPT_DISABLE = true // yeah not really
-        PC = getAddress(0x17FA)
-        breakpoint = true
-    }
     
     func SetTTYMode(TTY : Bool)
     {
@@ -254,13 +774,13 @@ class CPU {
     }
     
     // When saving and loading, it's important to save the Registers and PC state.
-    func GetStatus() -> [UInt8]
+    func GetStatus() -> [(byte)]
     {
-        let pch = UInt8(GetPC() >> 8)
-        let pcl = UInt8(GetPC() & 0x00ff)
+        let pch = (byte)(GetPC() >> 8)
+        let pcl = (byte)(GetPC() & 0x00ff)
         return [A, X, Y, SP, GetStatusRegister(), pcl, pch]
     }
-    func SetStatus(flags : [UInt8])
+    func SetStatus(flags : [(byte)])
     {
         A = flags[0]
         X = flags[1]
@@ -279,9 +799,9 @@ class CPU {
          // Get the saved data - 64Kb of RAM, 7 bytes of registers
          let savedData = try Data(contentsOf: fileURL)
             let status = savedData.endIndex - 7
-            let array = [UInt8](savedData)
+            let array = [(byte)](savedData)
             memory.SetMemory(dump: array.dropLast(7))
-            SetStatus(flags: [UInt8](array[status...status+6]))
+            SetStatus(flags: [(byte)](array[status...status+6]))
       
         } catch {
          // Catch any errors
@@ -303,9 +823,9 @@ class CPU {
          // Get the saved data - 64Kb of RAM, 7 bytes of registers
          let savedData = try Data(contentsOf: fileURL)
             let status = savedData.endIndex - 7
-            let array = [UInt8](savedData)
+            let array = [(byte)](savedData)
             memory.SetMemory(dump: array.dropLast(7))
-            SetStatus(flags: [UInt8](array[status...status+6]))
+            SetStatus(flags: [(byte)](array[status...status+6]))
       
         } catch {
          // Catch any errors
@@ -322,7 +842,7 @@ class CPU {
         let directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let fileURL = URL(fileURLWithPath: "CHECKERS", relativeTo: directoryURL).appendingPathExtension("APPLE")
         
-        var array : [UInt8] = memory.GetMemory()
+        var array : [(byte)] = memory.GetMemory()
         array = array + GetStatus()
       
         let data : Data = Data(bytes: array, count: array.endIndex)
@@ -349,12 +869,12 @@ class CPU {
         return memory.AppleReady()
     }
     
-    func AppleKeyboard(s : Bool, k : UInt8)
+    func AppleKeyboard(s : Bool, k : (byte))
     {
         memory.AppleKeyState(state: s, key: k)
     }
     
-    func AppleOutput() ->(Bool, UInt8)
+    func AppleOutput() ->(Bool, (byte))
     {
         return memory.getAppleOutputState()
     }
@@ -466,16 +986,7 @@ class CPU {
         case 0x1E65 : //   //intercept GETCH (get char from serial). used to be 0x1E5A, but intercept *within* routine just before get1 test
             self.prn("GETCH")
             
-            /* Used when entering code into KIM-1 BASIC
-            if (TYPING_ACTIVE) // Used to automagically enter code samples into running system.
-            {
-                A = getNextTypedChar()
-                X = memory.ReadAddress(address: 0xFD) // x is saved in TMPX by getch routine, we need to get it back in x;
-                Y = 0xFF
-                PC = 0x1E87
-                break
-            }
-             */
+           
 
 A = GetAKey()
 
@@ -610,7 +1121,7 @@ func StepSerial() -> (address: UInt16, Break: Bool, terminalOutput: String)
 
 
 
-func GetAKey() -> UInt8
+func GetAKey() -> (byte)
 {
     // if no key pressed, return 0xFF
     // else return ASCII code (upper case) and switch off key
@@ -627,54 +1138,8 @@ func GetAKey() -> UInt8
     }
 
 
-func Read(address : UInt16) -> UInt8
-{
-    return memory.ReadAddress(address: address)
-    }
 
-func Write(address : UInt16, byte : UInt8)
-    {
-    memory.WriteAddress(address: address, value: byte)
-    }
-
-
-func printStatusToDebugWindow(_ regs: String, _ flags: String) {
-    print(statusmessage, terminator: "")
-        print("  " + regs, terminator: "")
-        print("  " + flags)
-    }
-
-func getA() -> UInt8
-{
-    return A
-    }
-
-func getX() -> UInt8
-{
-    return X
-    }
-
-func getY() -> UInt8
-{
-    return Y
-    }
-
-func NotInROM() -> Bool
-{
-    // Used by the SST to skip over ROM code
-
-    if PC < 0x1C00
-        {
-        return true
-        }
-    else
-    {
-        return false
-        }
-
-}
-
-func Dump(opcode : UInt8)
+func Dump(opcode : (byte))
     {
 
     let regs = String("OP:\(String(format: " % 02X",opcode)) PC:\(String(format: " % 04X", PC)) A:\(String(format: " % 02X",A)) X:\(String(format: " % 02X",X)) Y:\(String(format: " % 02X",Y)) SP:\(String(format: " % 02X",SP))")
@@ -717,548 +1182,8 @@ func DisplayDebugInformation()
     }
 
 
-func MachineStatus()
-{
-    // a unique kim feature that copies the registers into memory
-    // to be examined later by the user if they so wish.
 
 
-    memory.WriteAddress(address: 0xEF, value: UInt8(PC & 255))
-        memory.WriteAddress(address: 0xF0, value: UInt8(PC >> 8))
-        memory.WriteAddress(address: 0xF1, value: GetStatusRegister())
-        memory.WriteAddress(address: 0xF2, value: SP)
-        memory.WriteAddress(address: 0xF3, value: A)
-        memory.WriteAddress(address: 0xF4, value: Y)
-        memory.WriteAddress(address: 0xF5, value: X)
-    }
-
-func SetStatusRegister(reg : UInt8)
-    {
-    CARRY_FLAG = (reg & 1) == 1
-        ZERO_FLAG = (reg & 2) == 2
-        INTERRUPT_DISABLE = (reg & 4) == 4
-        DECIMAL_MODE = (reg & 8) == 8
-        BREAK_FLAG = (reg & 16) == 16
-        OVERFLOW_FLAG = (reg & 64) == 64
-        NEGATIVE_FLAG = (reg & 64) == 128
-    }
-
-func GetStatusRegister() -> UInt8
-{
-    var sr : UInt8 = 0
-
-
-        if CARRY_FLAG { sr = 1}
-    if ZERO_FLAG { sr = sr + 2}
-    if INTERRUPT_DISABLE { sr = sr + 4}
-    if DECIMAL_MODE { sr = sr + 8}
-    if BREAK_FLAG { sr = sr + 16}
-    if OVERFLOW_FLAG { sr = sr + 64}
-    if NEGATIVE_FLAG { sr = sr + 128}
-
-    return sr
-    }
-
-
-func SetPC(ProgramCounter: UInt16)
-    {
-    PC = ProgramCounter
-    }
-
-func GetPC() -> UInt16
-{
-    return PC
-    }
-
-func Execute() -> Bool
-{
-    // Use the PC to read the instruction (and other data if required) and
-    // execute the instruction.
-
-    let ins = memory.ReadAddress(address: PC)
-
-
-        if PC == 0xffff
-        {
-        PC = 0
-        }
-    else
-    {
-        PC = PC + 1
-        }
-    //Dump(opcode: ins) // Debugging information.
-
-    return ProcessInstruction(instruction: ins)
-    }
-
-func ProcessInstruction(instruction : UInt8) -> Bool
-{
-
-    switch instruction {
-
-        case 0:
-            BRK()
-        case 1:
-            OR_indexed_indirect_x()
-
-
-        case 5:
-            OR_z()
-        case 06:
-            ASL_z()
-
-
-        case 8:
-            PHP()
-        case 9:
-            OR_i()
-        case 0x0A:
-            ASL_i()
-
-
-        case 0x0D:
-            OR_a()
-        case 0x0E:
-            ASL_a()
-
-
-        case 0x10:
-            BPL()
-        case 0x11:
-            OR_indirect_indexed_y()
-
-
-        case 0x15:
-            OR_zx()
-        case 0x16:
-            ASL_zx()
-        case 0x18:
-            CLC()
-        case 0x19:
-            OR_indexed_y()
-
-
-        case 0x1D:
-            OR_indexed_x()
-        case 0x1E:
-            ASL_indexed_x()
-
-
-        case 0x20:
-            JSR()
-        case 0x21:
-            AND_indexed_indirect_x()
-
-
-        case 0x24:
-            BIT_z()
-        case 0x25:
-            AND_z()
-        case 0x26:
-            ROL_z()
-
-
-
-        case 0x28:
-            PLP()
-        case 0x29:
-            AND_i()
-        case 0x2A:
-            ROL_i()
-
-
-        case 0x2C:
-            BIT_a()
-        case 0x2D:
-            AND_a()
-        case 0x2E:
-            ROL_a()
-
-
-        case 0x30:
-            BMI()
-        case 0x31:
-            AND_indirect_indexed_y()
-
-
-        case 0x35:
-            AND_zx()
-        case 0x36:
-            ROL_zx()
-
-
-        case 0x38:
-            SEC()
-        case 0x39:
-            AND_indexed_y()
-
-
-        case 0x3D:
-            AND_indexed_x()
-        case 0x3E:
-            ROL_indexed_x()
-
-
-        case 0x40:
-            RTI()
-        case 0x41:
-            EOR_indexed_indirect_x()
-
-
-        case 0x45:
-            EOR_z()
-        case 0x46:
-            LSR_z()
-
-
-        case 0x48:
-            PHA()
-        case 0x49:
-            EOR_i()
-        case 0x4A:
-            LSR_i()
-
-
-
-        case 0x4C:
-            JMP_ABS()
-        case 0x4D:
-            EOR_a()
-        case 0x4E:
-            LSR_a()
-
-
-        case 0x50:
-            BVC()
-        case 0x51:
-            EOR_indirect_indexed_y()
-
-
-        case 0x55:
-            EOR_zx()
-        case 0x56:
-            LSR_zx()
-
-
-        case 0x58:
-            CLI()
-        case 0x59:
-            EOR_indexed_y()
-
-
-        case 0x5A:
-            PHY()
-
-
-        case 0x5D:
-            EOR_indexed_x()
-        case 0x5E:
-            LSR_indexed_x()
-
-
-
-        case 0x60:
-            RTS()
-        case 0x61:
-            ADC_indexed_indirect_x()
-
-
-        case 0x65:
-            ADC_z()
-        case 0x66:
-            ROR_z()
-
-
-        case 0x68:
-            PLA()
-        case 0x69:
-            ADC_i()
-        case 0x6A:
-            ROR_i()
-
-
-        case 0x6D:
-            ADC_a()
-        case 0x6E:
-            ROR_a()
-
-
-        case 0x70:
-            BVS()
-        case 0x71:
-            ADC_indirect_indexed_y()
-
-
-        case 0x75:
-            ADC_zx()
-        case 0x76:
-            ROR_zx()
-
-
-        case 0x78:
-            SEI()
-        case 0x79:
-            ADC_indexed_y()
-        case 0x7A:
-            PLY()
-
-
-        case 0x7D:
-            ADC_indexed_x()
-        case 0x7E:
-            ROR_indexed_x()
-
-
-        case 0x6C:
-            JMP_REL()
-
-
-        case 0x72:
-            ADC_indirect_indexed_y()
-
-
-        case 0x80:
-            BRA() // 65C02
-        case 0x81:
-            STA_indexed_indirect_x()
-
-
-        case 0x84:
-            STY_z()
-        case 0x85:
-            STA_z()
-        case 0x86:
-            STX_z()
-
-
-        case 0x88:
-            DEY()
-
-       // case 0x89: BIT() 6502c only
-
-        case 0x8A:
-            TXA()
-
-
-        case 0x8C:
-            STY_a()
-        case 0x8D:
-            STA_a()
-        case 0x8E:
-            STX_a()
-
-
-        case 0x90:
-            BCC()
-        case 0x91:
-            STA_indirect_indexed_y()
-
-
-        case 0x94:
-            STY_xa()
-        case 0x95:
-            STA_zx()
-        case 0x96:
-            STX_ya()
-
-
-        case 0x98:
-            TYA()
-        case 0x99:
-            STA_indexed_y()
-        case 0x9A:
-            TXS()
-
-
-        case 0x9D:
-            STA_indexed_x()
-
-
-        case 0xA0:
-            LDY_i()
-        case 0xA1:
-            LDA_indexed_indirect_x()
-        case 0xA2:
-            LDX_i()
-
-
-        case 0xA4:
-            LDY_z()
-        case 0xA5:
-            LDA_z()
-        case 0xA6:
-            LDX_z()
-
-
-        case 0xA8:
-            TAY()
-        case 0xA9:
-            LDA_i()
-
-
-        case 0xAA:
-            TAX()
-
-
-        case 0xAC:
-            LDY_a()
-        case 0xAD:
-            LDA_a()
-        case 0xAE:
-            LDX_a()
-
-
-        case 0xB0:
-            BCS()
-        case 0xB1:
-            LDA_indirect_indexed_y()
-
-
-        case 0xB4:
-            LDY_zx()
-        case 0xB5:
-            LDA_zx()
-        case 0xB6:
-            LDX_zy()
-
-
-        case 0xB8:
-            CLV()
-        case 0xB9:
-            LDA_indexed_y()
-        case 0xBA:
-            TSX()
-
-
-        case 0xBC:
-            LDY_indexed_x()
-        case 0xBD:
-            LDA_indexed_x()
-        case 0xBE:
-            LDX_indexed_y()
-
-
-
-        case 0xC0:
-            CPY_i()
-        case 0xC1:
-            CMP_indexed_indirect_x()
-
-
-        case 0xC4:
-            CPY_z()
-        case 0xC5:
-            CMP_z()
-        case 0xC6:
-            DEC_z()
-
-
-        case 0xC8:
-            INY()       // Incorrect in Assembly Lines book (gasp)
-        case 0xC9:
-            CMP_i()
-        case 0xCA:
-            DEX()
-
-
-        case 0xCC:
-            CPY_A()
-        case 0xCD:
-            CMP_a()
-        case 0xCE:
-            DEC_a()
-
-
-        case 0xD0:
-            BNE()
-        case 0xD1:
-            CMP_indirect_indexed_y()
-
-
-        case 0xD5:
-            CMP_zx()
-        case 0xD6:
-            DEC_zx()
-
-
-        case 0xD8:
-            CLD()
-        case 0xD9:
-            CMP_indexed_y()
-        case 0xDA:
-            PHX()
-
-
-        case 0xDD:
-            CMP_indexed_x()
-        case 0xDE:
-            DEC_ax()
-
-
-        case 0xE0:
-            CPX_i()
-        case 0xE1:
-            SBC_indexed_indirect_x()
-
-
-        case 0xE4:
-            CPX_z()
-        case 0xE5:
-            SBC_z()
-        case 0xE6:
-            INC_z()
-
-
-        case 0xE8:
-            INX()
-        case 0xE9:
-            SBC_i()
-        case 0xEA:
-            NOP()
-
-
-        case 0xEC:
-            CPX_A()
-        case 0xED:
-            SBC_a()
-        case 0xEE:
-            INC_a()
-
-
-        case 0xF0:
-            BEQ()
-        case 0xF1:
-            SBC_indirect_indexed_y()
-
-
-        case 0xF5:
-            SBC_zx()
-        case 0xF6:
-            INC_zx()
-
-
-        case 0xF8:
-            SED()
-        case 0xF9:
-            SBC_indexed_y()
-        case 0xFA:
-            PLX()
-
-
-        case 0xFD:
-            SBC_indexed_x()
-        case 0xFE:
-            INC_ax()
-
-
-        default: /*print("**********************      Unknown instruction (or garbage): " + String(  format: "%02X", instruction) + " at " + String(  format: "%04X", PC) + "   **********************");*/
-            return false
-
-
-        }
-
-    return true
-    }
 
 
 
@@ -1455,11 +1380,11 @@ func SBC_indexed_indirect_x() // E1
 
 // General comparision
 
-func compare(_ n : UInt8, _ v: UInt8)
+func compare(_ n : (byte), _ v: (byte))
     {
     let result = Int16(n) - Int16(v)
-        if n >= UInt8(v & 0xFF) { CARRY_FLAG = true } else { CARRY_FLAG = false }
-    if n == UInt8(v & 0xFF) { ZERO_FLAG = true } else { ZERO_FLAG = false }
+        if n >= (byte)(v & 0xFF) { CARRY_FLAG = true } else { CARRY_FLAG = false }
+    if n == (byte)(v & 0xFF) { ZERO_FLAG = true } else { ZERO_FLAG = false }
     if (result & 0x80) == 0x80 { NEGATIVE_FLAG = true } else { NEGATIVE_FLAG = false }
 }
 
@@ -2656,7 +2581,7 @@ func INC_ax() // FE
 
 // Branching
 
-func PerformRelativeAddress(jump : UInt8)
+func PerformRelativeAddress(jump : (byte))
     {
     var t = UInt16(jump)
         var addr = Int(PC) + Int(t)
@@ -2787,8 +2712,8 @@ func JSR() // 20
         let target = getAbsoluteAddress()
 
 
-        push(UInt8(h))
-        push(UInt8(l))
+        push((byte)(h))
+        push((byte)(l))
 
 
         PC = target
@@ -2821,7 +2746,7 @@ func getAbsoluteY() -> UInt16
         return ad
     }
 
-func getImmediate() -> UInt8
+func getImmediate() -> (byte)
 {
     let v = memory.ReadAddress(address: PC); PC = PC + 1
         return v
@@ -2882,19 +2807,19 @@ func get_indexed_indirect_zp_x_address() -> UInt16
 
     }
 
-func get_indexed_indirect_zp_x() -> UInt8
+func get_indexed_indirect_zp_x() -> (byte)
 { /// 01, 21, 41, 61, 81, a1, c1, e1,
     return memory.ReadAddress(address: get_indexed_indirect_zp_x_address())
     }
 
 
-func push(_ v : UInt8)
+func push(_ v : (byte))
     {
     memory.WriteAddress(address: UInt16(0x100 + UInt16(SP)), value: v)
         SP = SP & -1
     }
 
-func pop() -> UInt8
+func pop() -> (byte)
 {
     SP = SP & +1
         let v = memory.ReadAddress(address: UInt16(0x100 + UInt16(SP)))
@@ -2903,7 +2828,7 @@ func pop() -> UInt8
 
 
 
-func addC(_ n2: UInt8)
+func addC(_ n2: (byte))
     {
 
     let c : UInt16 = (CARRY_FLAG == true) ? 1 : 0
@@ -2948,7 +2873,7 @@ func addC(_ n2: UInt8)
                 }
         }
 
-        A = UInt8(total & 0xFF)
+        A = (byte)(total & 0xFF)
             SetFlags(value: A)
 
 
@@ -2966,11 +2891,11 @@ func addC(_ n2: UInt8)
 
 }
 
-func ADCDecimalImplementation(s : UInt8)
+func ADCDecimalImplementation(s : (byte))
     {
     // s = value to be added to accumulator
 
-    let C : UInt8 = (CARRY_FLAG == true) ? 1 : 0
+    let C : (byte) = (CARRY_FLAG == true) ? 1 : 0
 
         // Lower nib
     var AL = (A & 15) + (s & 15) + C
@@ -2999,19 +2924,19 @@ func ADCDecimalImplementation(s : UInt8)
     }
 
 
-func subC(_ local_data: UInt8)
+func subC(_ local_data: (byte))
     {
     var total : UInt16 = 0
         var bcd_low : UInt16 = 0;
     var bcd_high : UInt16 = 0;
     var bcd_total : UInt16 = 0;
     var signed_total : Int16 = 0;
-    var operand0 : UInt8 = 0;
-    var operand1 : UInt8 = 0;
-    var result : UInt8 = 0;
-    var flag_c_invert : UInt8 = 0;
-    var low_carry : UInt8 = 0;
-    var high_carry : UInt8 = 0;
+    var operand0 : (byte) = 0;
+    var operand1 : (byte) = 0;
+    var result : (byte) = 0;
+    var flag_c_invert : (byte) = 0;
+    var low_carry : (byte) = 0;
+    var high_carry : (byte) = 0;
     let register_a = A
 
 
@@ -3060,7 +2985,7 @@ func subC(_ local_data: UInt8)
 
     operand0 = (register_a & 0x80)
         operand1 = (local_data & 0x80)
-        result = UInt8((total & 0x80))
+        result = (byte)((total & 0x80))
 
 
                 if (operand0 == 0 && operand1 != 0 && result != 0)
@@ -3080,7 +3005,7 @@ func subC(_ local_data: UInt8)
                     }
     }
 
-    A = UInt8((0xFF & total))
+    A = (byte)((0xFF & total))
 
 
         SetFlags(value: A)
@@ -3088,19 +3013,19 @@ func subC(_ local_data: UInt8)
 
     }
 
-func addC2(_ local_data: UInt8)
+func addC2(_ local_data: (byte))
     {
     var total : UInt16 = 0
         var bcd_low : UInt16 = 0;
     var bcd_high : UInt16 = 0;
     var bcd_total : UInt16 = 0;
 
-    var operand0 : UInt8 = 0;
-    var operand1 : UInt8 = 0;
-    var result : UInt8 = 0;
-    var flag_c : UInt8 = 0;
-    var low_carry : UInt8 = 0;
-    var high_carry : UInt8 = 0;
+    var operand0 : (byte) = 0;
+    var operand1 : (byte) = 0;
+    var result : (byte) = 0;
+    var flag_c : (byte) = 0;
+    var low_carry : (byte) = 0;
+    var high_carry : (byte) = 0;
     let register_a = A
 
 
@@ -3147,7 +3072,7 @@ func addC2(_ local_data: UInt8)
 
     operand0 = (A & 0x80)
         operand1 = (local_data & 0x80)
-        result = UInt8((total & 0x80))
+        result = (byte)((total & 0x80))
 
 
                 if (operand0 == 0 && operand1 == 0 && result != 0)
@@ -3167,7 +3092,7 @@ func addC2(_ local_data: UInt8)
                     }
     }
 
-    A = UInt8((0xFF & total))
+    A = (byte)((0xFF & total))
 
 
 
@@ -3178,7 +3103,7 @@ func addC2(_ local_data: UInt8)
 
 
 // Fisxed the non-Decimal mode Overflow Flag issue
-func subC2(_ n2: UInt8)
+func subC2(_ n2: (byte))
     {
 
     let c : UInt16 = (CARRY_FLAG == true) ? 0 : 1
@@ -3220,7 +3145,7 @@ func subC2(_ n2: UInt8)
             }
     }
 
-    A = UInt8(total & 0xFF)
+    A = (byte)(total & 0xFF)
         SetFlags(value: A)
 
 
@@ -3258,7 +3183,7 @@ func subC2(_ n2: UInt8)
             if ((hxx & 0x10) != 0) { hxx = hxx - 6 }
 
         let result = (lxx & 0x0f) | (hxx << 4)
-            A = UInt8(result & 0xff)
+            A = (byte)(result & 0xff)
 
             // Special overflow test
         var A2C = Int(A)
@@ -3287,58 +3212,18 @@ func subC2(_ n2: UInt8)
         }
     else
     {
-        A = UInt8(result & 0xFF)
+        A = (byte)(result & 0xFF)
             SetFlags(value: A)
         }
 }
 
 
-func getAbsoluteAddress() -> UInt16
-{
-    // Get 16 bit address from current PC
-    let l = UInt16(memory.ReadAddress(address: PC))
-        PC = PC + 1
-        let h = UInt16(memory.ReadAddress(address: PC))
-        PC = PC + 1
-        return UInt16(h << 8 | l)
-    }
-
-func getAddress(_ addr : UInt16) -> UInt16
-{
-    // Get 16 bit address stored at the supplied address
-    let l = UInt16(memory.ReadAddress(address: addr))
-        let h = UInt16(memory.ReadAddress(address: UInt16((Int(addr) + 1) & 0xffff)))
-        let ad = Int(h << 8 | l)
-        return UInt16(ad & 0xffff)
-    }
-
-func SetFlags(value : UInt8)
-    {
-    if value == 0
-        {
-        ZERO_FLAG = true
-        }
-    else
-    {
-        ZERO_FLAG = false
-        }
-
-    if (value & 0x80) == 0x80
-        {
-        NEGATIVE_FLAG = true
-        }
-        else
-    {
-        NEGATIVE_FLAG = false
-        }
-
-}
 
 
 // Called by the UI to pass on keyboard status
 // so that the CPU could query it.
 
-func SetKeypress(keyPress : Bool, keyNum: UInt8)
+func SetKeypress(keyPress : Bool, keyNum: (byte))
     {
     kim_keyActive = keyPress
         kim_keyNumber = keyNum
