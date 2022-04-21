@@ -270,16 +270,16 @@ void SetFlags(byte value)
             byte v = get_indexed_indirect_zp_x();
             A = (byte)(A | v);
             SetFlags(A);
-            //prn("OR ($" + String(format: "%02X", za) + ",X)")
+            ////prn("OR ($" + String(format: "%02X", za) + ",X)")
     }
 
         void OR_z() // 5
         {
             UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-            byte v = memory.ReadAddress((UInt16)(ad));
+            byte v = memory.ReadAddress((UInt16)(ad));;
             A = (byte)(A | v);
             SetFlags(A);
-             //prn("OR $" + String(format: "%02X", ad))
+             ////prn("OR $" + String(format: "%02X", ad))
     }
 
         UInt16 getZeroPageX() 
@@ -306,7 +306,7 @@ void SetFlags(byte value)
             memory.WriteAddress((UInt16)(za), v);
         PC = (UInt16)(PC + 1);
             SetFlags(v);
-        //prn("ASL $" + String(format: "%02X", za))
+        ////prn("ASL $" + String(format: "%02X", za))
     }
 
         void ASL_zx() // 16
@@ -318,7 +318,7 @@ void SetFlags(byte value)
             v = (byte)(v << 1);
             memory.WriteAddress(ad, v);
             SetFlags(v);
-        //prn("ASL $" + String(format: "%02X", z) + ",X")
+        ////prn("ASL $" + String(format: "%02X", z) + ",X")
     }
 
 
@@ -328,11 +328,260 @@ void SetFlags(byte value)
             UNUSED_FLAG = true;
             byte r = GetStatusRegister();
             push((byte)(r | (BREAK_FLAG ? 0x10 : 0)));  // 6502 quirk - push the BREAK_FLAG but don't set it
-        //prn("PHP")
+        ////prn("PHP")
+    }
+
+        byte getImmediate() 
+{
+    return memory.ReadAddress(PC); PC = (UInt16) (PC + 1);
+
+    }
+
+    void OR_i() // 09
+        {
+            byte v = getImmediate();
+            A = (byte)(A | v);
+            SetFlags(A);
+        ////prn("OR #$" + String(format: "%02X", v))
+    }
+
+
+        void ASL_i() // 0A
+        {
+            CARRY_FLAG = ((A & 128) == 128);
+            A = (byte)(A << 1);
+            SetFlags(A);
+        ////prn("ASL")
+    }
+
+        void OR_a() // 0d
+        {
+            UInt16 ad = getAbsoluteAddress();
+            byte v = memory.ReadAddress((UInt16)(ad));;
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%04X", ad))
     }
 
 
 
+        void ASL_a() // 0E
+        {
+            UInt16 ad = getAbsoluteAddress();
+            var v = memory.ReadAddress((UInt16)(ad));
+            CARRY_FLAG = ((v & 128) == 128);
+            v = (byte)(v << 1);
+            memory.WriteAddress(ad, v);
+            SetFlags(v);
+                //prn("ASL $" + String(format: "%04X", ad))
+    }
+
+        void PerformRelativeAddress(byte jump)
+        {
+            UInt16 t = (UInt16)(jump);
+            UInt16 addr = (UInt16) (PC + t);
+        if ((jump & 0x80) == 0x80) {
+                t = (UInt16)(0x100 - t);
+                addr = (UInt16) (PC - t);
+            }
+            PC = (UInt16)(addr & 0xffff);
+    }
+
+
+
+        void BPL() // 10
+        {
+            byte t = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+
+
+            if (NEGATIVE_FLAG == false)
+            {
+                PerformRelativeAddress(t);
+            }
+            //prn("BPL $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
+        }
+
+
+
+        UInt16 getIndirectX()  // used by 61, ADC_Indexed_Indirect_X
+{
+            UInt16 eah = (UInt16)(memory.ReadAddress(PC) & +X & 0xff);
+            UInt16 adr = memory.ReadAddress((UInt16)(eah & 0x00ff));
+            |
+            (UInt16)memory.ReadAddress((UInt16)(eah & +1 & 0x00ff)) << 8;
+        PC = (UInt16) (PC + 1);
+            return adr;
+
+
+    }
+
+    UInt16 getIndirectY()  // (indirect),Y // Indexed_Indirect_Y
+{
+
+            UInt16 ial = (UInt16)(memory.ReadAddress(PC)); PC = (UInt16) (PC + 1);
+            UInt16 bal = (UInt16)(memory.ReadAddress(((UInt16)(0xFF & ial))));
+            UInt16 bah = (UInt16)(memory.ReadAddress(((UInt16)(0xFF & (ial & +1)))));
+
+
+            UInt16 ea = (UInt16)(bah << 8 & +bal & +Y);
+
+
+            return ea;
+
+
+}
+
+
+
+void OR_indirect_indexed_y() // 11
+        {
+
+            UInt16 adr = getIndirectY();
+            byte v = memory.ReadAddress(adr);
+        A = (byte)(A | v);
+            SetFlags(A);
+            //prn("OR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+        }
+
+
+        void OR_zx() // 15
+        {
+            byte z = memory.ReadAddress(PC);
+            UInt16 ad = getZeroPageX();
+            byte v = memory.ReadAddress(ad);
+        A = (byte)(A | v); 
+            SetFlags(A);
+            //prn("OR $" + String(format: "%02X", z) + ",X")
+        }
+
+        void CLC()
+        {
+            CARRY_FLAG = false;
+                //prn("CLC")
+    }
+
+        void CLV() // B8
+        {
+            OVERFLOW_FLAG = false;
+                //prn("CLV")
+    }
+
+        void CLD() // d8
+        {
+            DECIMAL_MODE = false;
+    }
+
+        void OR_indexed_y() // 19
+        {
+            UInt16 ad = getAbsoluteY();
+            byte v = memory.ReadAddress(ad);
+        A = (byte)(A | v);
+            SetFlags(A);
+            //prn("OR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+        }
+
+        UInt16 getAbsoluteX() 
+{
+            UInt16 ad = (ushort)(getAbsoluteAddress() & +X);
+            return ad;
+    }
+
+        UInt16 getAbsoluteY()
+{
+            UInt16 ad = (ushort)(getAbsoluteAddress() & +Y);
+            return ad;
+}
+
+
+        void OR_indexed_x() // 1d
+        {
+            UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
+        A = (byte)(A | v);
+            SetFlags(A);
+            //prn("OR $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
+        }
+
+        void ASL_indexed_x() // 1E
+        {
+            UInt16 ad = getAbsoluteX();
+            byte v = memory.ReadAddress(ad);
+        CARRY_FLAG = ((v & 128) == 128);
+        v = (byte)(v << 1);
+            memory.WriteAddress(ad, v);
+            SetFlags(v);
+        //prn("ASL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+    }
+
+
+
+        void JSR() // 20
+        {
+            // updated to push the H byte first, as per actual 6502!
+
+            byte h = (byte)((PC + 1) >> 8);
+            byte l = (byte)((PC + 1) & 0xff);
+
+
+            UInt16 target = getAbsoluteAddress();
+
+
+            push((byte)(h));
+            push((byte)(l));
+
+
+            PC = target;
+        
+
+        //prn("JSR $" + String(format: "%04X", target))
+        }
+
+
+        void AND_indexed_indirect_x() // 21
+        {
+            UInt16 za = memory.ReadAddress(PC);
+            byte v = get_indexed_indirect_zp_x();
+            A = (byte)(A & v);
+            SetFlags(A);
+            //prn("AND ($" + String(format: "%02X", za) + ",X)")
+        }
+
+
+        void BIT_z() // 24
+        {
+            UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+            byte v = memory.ReadAddress((UInt16)(ad));;
+                byte t = (byte)(A & v);
+            ZERO_FLAG = (t == 0) ? true : false;
+            NEGATIVE_FLAG = (v & 128) == 128;
+            OVERFLOW_FLAG = (v & 64) == 64;
+        
+
+        //prn("BIT $" + String(format: "%02X", ad))
+        }
+
+        void AND_z() // 25
+        {
+            UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+            byte v = memory.ReadAddress((UInt16)(ad));
+        A = (byte)(A & v);
+            SetFlags(A);
+            //prn("AND $" + String(format: "%02X", ad))
+        }
+
+        void AND_zx() // 35
+        {
+            byte z = memory.ReadAddress(PC);
+            UInt16 ad = getZeroPageX()
+                byte v = memory.ReadAddress(ad)
+                A = (byte)(A & v);
+            SetFlags(A);
+            //prn("AND $" + String(format: "%02X", z))
+        }
+
+
+
+        // -----------------
 
         bool ProcessInstruction(byte instruction )
 {
@@ -354,49 +603,49 @@ void SetFlags(byte value)
         case 8:
                     PHP(); break;
         case 9:
-            OR_i();
+                    OR_i(); break;
         case 0x0A:
-            ASL_i();
+                    ASL_i(); break;
 
 
         case 0x0D:
-            OR_a();
+                    OR_a(); break;
         case 0x0E:
-            ASL_a();
+                    ASL_a(); break;
 
 
         case 0x10:
-            BPL();
+                    BPL(); break;
         case 0x11:
-            OR_indirect_indexed_y();
+                    OR_indirect_indexed_y(); break;
 
 
         case 0x15:
-            OR_zx();
+                    OR_zx(); break;
         case 0x16:
-            ASL_zx();
+                    ASL_zx(); break;
         case 0x18:
-            CLC();
+                    CLC(); break;
         case 0x19:
-            OR_indexed_y();
+                    OR_indexed_y(); break;
 
 
         case 0x1D:
-            OR_indexed_x();
+                    OR_indexed_x(); break;
         case 0x1E:
-            ASL_indexed_x();
+                    ASL_indexed_x();    break;
 
 
         case 0x20:
-            JSR();
+                    JSR();  break;
         case 0x21:
-            AND_indexed_indirect_x();
+                     AND_indexed_indirect_x(); break;
 
 
         case 0x24:
-            BIT_z();
+                    BIT_z(); break;
         case 0x25:
-            AND_z();
+                    AND_z(); break;
         case 0x26:
             ROL_z();
 
@@ -997,7 +1246,7 @@ class CPU {
         switch (PC) {
                  
         case 0x1F1F :
-            prn("SCANDS"); // Also sets Z to 0 if a key is being pressed
+            //prn("SCANDS"); // Also sets Z to 0 if a key is being pressed
            
             dataToDisplay = true
             
@@ -1013,13 +1262,13 @@ class CPU {
             PC = 0x1F45
             
         case 0x1C2A : // Test the input speed for the hardware for timing. We can fake it.
-            self.prn("DETCPS")
+            self.//prn("DETCPS")
             memory.WriteAddress(0x17F3, 1)
             memory.WriteAddress(0x17F2, 1)
             PC = 0x1C4F
             
         case 0x1EFE : // The AK call is a "is someone pressing my keyboard?"
-            self.prn("AK")
+            self.//prn("AK")
             
             if memory.ReadAddress(0xff) == 0 // LED mode
             {
@@ -1042,17 +1291,17 @@ class CPU {
        
             
         case 0x1F6A :  // intercept GETKEY (get key from hex keyboard)
-            self.prn("GETKEY \(kim_keyNumber)")
+            self.//prn("GETKEY \(kim_keyNumber)")
           
             if kim_keyActive
             {
                 A = kim_keyNumber
-                SetFlags(A)
+                SetFlags(A);
             }
             else
             {
                 A = 0xFF
-                SetFlags(A)
+                SetFlags(A);
             }
             
             kim_keyNumber = 0
@@ -1062,7 +1311,7 @@ class CPU {
             PC = 0x1F90
             
         case 0x1EA0 : // intercept OUTCH (send char to serial) and display on "console"
-            self.prn("OUTCH")
+            self.//prn("OUTCH")
             
             if A >= 13
             {
@@ -1074,7 +1323,7 @@ class CPU {
             
             
         case 0x1E65 : //   //intercept GETCH (get char from serial). used to be 0x1E5A, but intercept *within* routine just before get1 test
-            self.prn("GETCH")
+            self.//prn("GETCH")
             
            
 
@@ -1296,12 +1545,12 @@ void RTI()
         let l = (UInt16)(pop())
         let h = (UInt16)(pop())
         PC = (h << 8) + l
-        prn("RTI")
+        //prn("RTI")
     }
 
 void NOP() // EA
 {
-    prn("NOP")
+    //prn("NOP")
     }
 
 // Accumulator BIT test - needs proper testing
@@ -1309,95 +1558,95 @@ void NOP() // EA
 
 void BIT_z() // 24
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
-        let t = (A & v)
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
+        byte t = byte(A & v);
         ZERO_FLAG = (t == 0) ? true : false
         NEGATIVE_FLAG = (v & 128) == 128
         OVERFLOW_FLAG = (v & 64) == 64
 
 
-        prn("BIT $" + String(format: "%02X", ad))
+        //prn("BIT $" + String(format: "%02X", ad))
     }
 
 
 void BIT_a() // 2C
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
-        let t = (A & v)
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
+        byte t = byte(A & v);
         ZERO_FLAG = (t == 0) ? true : false
         NEGATIVE_FLAG = (v & 128) == 128
         OVERFLOW_FLAG = (v & 64) == 64
 
 
-        prn("BIT $" + String(format: "%04X", ad))
+        //prn("BIT $" + String(format: "%04X", ad))
     }
 
 // Accumulator Addition
 
 void ADC_i() // 69
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         addC(v)
-        prn("ADC #$" + String(format: "%02X", v))
+        //prn("ADC #$" + String(format: "%02X", v))
     }
 
 void ADC_indexed_indirect_x() // 61
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         addC(v)
-        prn("ADC ($" + String(format: "%02X", za) + ",X)")
+        //prn("ADC ($" + String(format: "%02X", za) + ",X)")
     }
 
 void ADC_z() // 65
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
         addC(v)
-        prn("ADC $" + String(format: "%04X", v))
+        //prn("ADC $" + String(format: "%04X", v))
     }
 
 void ADC_zx() // 75
 {
     let zp = getZeroPageX()
-        let v = memory.ReadAddress(zp)
+        byte v = memory.ReadAddress(zp)
         addC(v)
-        prn("ADC $" + String(format: "%02X", zp & -(UInt16)(X)) + ",X")
+        //prn("ADC $" + String(format: "%02X", zp & -(UInt16)(X)) + ",X")
     }
 
 void ADC_a() // 6D
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         addC(v)
-        prn("ADC $" + String(format: "%04X", ad))
+        //prn("ADC $" + String(format: "%04X", ad))
     }
 
 void ADC_indexed_x() // 7d
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad)
         addC(v)
-        prn("ADC $" + String(format: "%04X", ad & -(UInt16)(X)))
+        //prn("ADC $" + String(format: "%04X", ad & -(UInt16)(X)))
     }
 
 void ADC_indexed_y() // 79
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
         addC(v)
-        prn("ADC $" + String(format: "%04X", ad & -(UInt16)(Y)))
+        //prn("ADC $" + String(format: "%04X", ad & -(UInt16)(Y)))
     }
 
 
 void ADC_indirect_indexed_y() // 71
 {
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
         addC(v)
-        prn("ADC ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+        //prn("ADC ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 
@@ -1407,65 +1656,65 @@ void ADC_indirect_indexed_y() // 71
 
 void SBC_i() // E9
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         subC(v)
-        prn("SBC #$" + String(format: "%02X", v))
+        //prn("SBC #$" + String(format: "%02X", v))
     }
 
 void SBC_z() // E5
 {
     let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(zero_page_address))
+        byte v = memory.ReadAddress((UInt16)(zero_page_address))
         subC(v)
-        prn("SBC $" + String(String(format: "%02X", zero_page_address)))
+        //prn("SBC $" + String(String(format: "%02X", zero_page_address)))
     }
 
 void SBC_zx() // F5
 {
-    let ad = getZeroPageX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
+        //prn("SBC $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
 void SBC_a() // ed
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         subC(v)
-        prn("SBC $" + String(format: "%04X", ad))
+        //prn("SBC $" + String(format: "%04X", ad))
     }
 
 void SBC_indexed_x() // fd
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
+        //prn("SBC $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
     }
 
 void SBC_indexed_y() // F9
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
         subC(v)
-        prn("SBC $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+        //prn("SBC $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 void SBC_indirect_indexed_y() // F1
 {
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
         subC(v)
-        prn("SBC ($" + String(format: "%04X", adr - (UInt16)(Y)) + "),Y")
+        //prn("SBC ($" + String(format: "%04X", adr - (UInt16)(Y)) + "),Y")
     }
 
 void SBC_indexed_indirect_x() // E1
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         subC(v)
-        prn("SBC ($" + String(format: "%04X", za) + ",X)")
+        //prn("SBC ($" + String(format: "%04X", za) + ",X)")
     }
 
 // General comparision
@@ -1482,25 +1731,25 @@ void compare(_ n : (byte), _ v: (byte))
 
 void CPX_i() // E0
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(X, v)
-        prn("CPX #$" + String(format: "%02X", v))
+        //prn("CPX #$" + String(format: "%02X", v))
     }
 
 void CPX_z() // E4
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(X, v)
-        prn("CPX $" + String(format: "%02X", ad))
+        //prn("CPX $" + String(format: "%02X", ad))
     }
 
 void CPX_A() // EC
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(X, v)
-        prn("CPX $" + String(format: "%04X", ad))
+        //prn("CPX $" + String(format: "%04X", ad))
 
 
     }
@@ -1509,25 +1758,25 @@ void CPX_A() // EC
 
 void CPY_i() // C0
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(Y, v)
-        prn("CPY #$" + String(format: "%02X", v))
+        //prn("CPY #$" + String(format: "%02X", v))
     }
 
 void CPY_z() // C4
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(Y, v)
-        prn("CPY $" + String(format: "%02X", ad))
+        //prn("CPY $" + String(format: "%02X", ad))
     }
 
 void CPY_A()
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(Y, v)
-        prn("CPY $" + String(format: "%04X", ad))
+        //prn("CPY $" + String(format: "%04X", ad))
 
 
     }
@@ -1536,68 +1785,68 @@ void CPY_A()
 
 void CMP_i() // C9
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         compare(A, v)
-        prn("CMP #$" + String(format: "%02X", v))
+        //prn("CMP #$" + String(format: "%02X", v))
     }
 
 void CMP_z() // C5
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(A, v)
-        prn("CMP $" + String(format: "%02X", ad))
+        //prn("CMP $" + String(format: "%02X", ad))
     }
 
 void CMP_zx() // D5
 {
-    let ad = getZeroPageX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
+        //prn("CMP $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
 void CMP_a() // cd
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         compare(A, v)
-        prn("CMP $" + String(format: "%04X", ad))
+        //prn("CMP $" + String(format: "%04X", ad))
     }
 
 void CMP_indexed_x() // dd
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        //prn("CMP $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 void CMP_indexed_y() // d9
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
         compare(A, v)
-        prn("CMP $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+        //prn("CMP $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 void CMP_indirect_indexed_y() // D1
 {
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
 
         //let zp = (UInt16)(memory.ReadAddress(PC));
-        //let v = memory.ReadAddress(getIndirectIndexedBase())
+        //byte v = memory.ReadAddress(getIndirectIndexedBase())
     compare(A, v)
-        prn("CMP ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+        //prn("CMP ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 void CMP_indexed_indirect_x() // c1
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         compare(A, v)
-        prn("CMP ($" + String(format: "%02X", za) + "),X")
+        //prn("CMP ($" + String(format: "%02X", za) + "),X")
     }
 
 
@@ -1606,66 +1855,66 @@ void CMP_indexed_indirect_x() // c1
 void LDA_i() // A9
 {
     A = getImmediate()
-        SetFlags(A)
-        prn("LDA #$" + String(format: "%02X", A))
+        SetFlags(A);
+        //prn("LDA #$" + String(format: "%02X", A))
     }
 
 void LDA_z() // A5
 {
     let zero_page_ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         A = memory.ReadAddress((UInt16)(zero_page_ad))
-        SetFlags(A)
-        prn("LDA $" + String(format: "%02X", zero_page_ad))
+        SetFlags(A);
+        //prn("LDA $" + String(format: "%02X", zero_page_ad))
     }
 
 void LDA_zx() // B5
 {
-    let ad = getZeroPageX()
+    UInt16 ad = getZeroPageX()
         A = memory.ReadAddress(ad)
-        SetFlags(A)
-        prn("LDA $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
+        SetFlags(A);
+        //prn("LDA $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
 void LDA_a() // ad
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         A = memory.ReadAddress(ad)
-        SetFlags(A)
-        prn("LDA $" + String(format: "%04X", ad))
+        SetFlags(A);
+        //prn("LDA $" + String(format: "%04X", ad))
     }
 
 void LDA_indexed_x() // bd
 {
-    let ad = getAbsoluteX()
+    UInt16 ad = getAbsoluteX();
         A = memory.ReadAddress(ad)
-        SetFlags(A)
-        prn("LDA $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        SetFlags(A);
+        //prn("LDA $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 void LDA_indexed_y() // B9
 {
-    let ad = getAbsoluteY()
+    UInt16 ad = getAbsoluteY()
         A = memory.ReadAddress(ad)
-        SetFlags(A)
-        prn("LDA $" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
+        SetFlags(A);
+        //prn("LDA $" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
     }
 
 void LDA_indexed_indirect_x() // A1
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     A = get_indexed_indirect_zp_x()
-        SetFlags(A)
-        prn("LDA ($" + String(format: "%02X", za) + ",X)")
+        SetFlags(A);
+        //prn("LDA ($" + String(format: "%02X", za) + ",X)")
     }
 
 void LDA_indirect_indexed_y() // B1
 {
-    let adr = getIndirectY()
+    UInt16 adr = getIndirectY()
         A = memory.ReadAddress(adr)
         //let za = memory.ReadAddress(PC)
         // A = memory.ReadAddress(getIndirectIndexedBase())
-    SetFlags(A)
-        prn("LDA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+    SetFlags(A);
+        //prn("LDA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 
@@ -1676,30 +1925,30 @@ void STA_z() // 85
 {
     let zero_page_add = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         memory.WriteAddress((UInt16)(zero_page_add), A)
-        prn("STA $" + String(format: "%02X", zero_page_add))
+        //prn("STA $" + String(format: "%02X", zero_page_add))
     }
 
 void STA_zx() // 95
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
         memory.WriteAddress(ad, A)
-        prn("STA $" + String(format: "%02X", z) + ",X")
+        //prn("STA $" + String(format: "%02X", z) + ",X")
     }
 
 void STA_a() // 8D
 {
     let v = getAbsoluteAddress()
         memory.WriteAddress(v, A)
-        prn("STA #$" + String(format: "%04X", v))
+        //prn("STA #$" + String(format: "%04X", v))
     }
 
 
 void STA_indexed_x() // 9d
 {
-    let ad = getAbsoluteX()
+    UInt16 ad = getAbsoluteX();
         memory.WriteAddress(ad, A)
-        prn("STA #$" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        //prn("STA #$" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
@@ -1707,28 +1956,28 @@ void STA_indexed_x() // 9d
 
 void STA_indexed_y() // Absolute indexed // 99
 {
-    let ad = getAbsoluteY()
+    UInt16 ad = getAbsoluteY()
         memory.WriteAddress(ad, A)
-        prn("STA #$" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
+        //prn("STA #$" + String(format: "%04X", ad & -(UInt16)(Y)) + ",Y")
     }
 
 void STA_indirect_indexed_y() // 91
 {
-    let adr = getIndirectY()
+    UInt16 adr = getIndirectY()
         memory.WriteAddress(adr, A)
 
 
         // let za = memory.ReadAddress(PC)
         //  memory.WriteAddress(getIndirectIndexedBase(), A)
-    prn("STA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+    //prn("STA ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 void STA_indexed_indirect_x() // 81
 {
-    let za = memory.ReadAddress(PC);
-    let adr = get_indexed_indirect_zp_x_address()
+    UInt16 za = memory.ReadAddress(PC);
+    UInt16 adr = get_indexed_indirect_zp_x_address()
         memory.WriteAddress((UInt16)(adr), A)
-        prn("STA ($" + String(format: "%02X", za) + "),X")
+        //prn("STA ($" + String(format: "%02X", za) + "),X")
 
     }
 
@@ -1739,7 +1988,7 @@ void LDX_i() // A2
 {
     X = getImmediate()
         SetFlags(X)
-        prn("LDX #$" + String(format: "%02X", X))
+        //prn("LDX #$" + String(format: "%02X", X))
     }
 
 void LDX_z() // A6
@@ -1747,31 +1996,31 @@ void LDX_z() // A6
     let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         X = memory.ReadAddress((UInt16)(zero_page_address))
         SetFlags(X)
-        prn("LDX $" + String(format: "%02X", zero_page_address))
+        //prn("LDX $" + String(format: "%02X", zero_page_address))
     }
 
 void LDX_zy() // B6
 {
-    let ad = getZeroPageY()
+    UInt16 ad = getZeroPageY()
         X = memory.ReadAddress(ad)
         SetFlags(X)
-        prn("LDX $" + String(format: "%02X", ad & -(UInt16)(Y)) + ",Y")
+        //prn("LDX $" + String(format: "%02X", ad & -(UInt16)(Y)) + ",Y")
     }
 
 void LDX_a() // ae
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         X = memory.ReadAddress(ad)
         SetFlags(X)
-        prn("LDX $" + String(format: "%04X", ad))
+        //prn("LDX $" + String(format: "%04X", ad))
     }
 
 void LDX_indexed_y() // BE
 {
-    let ad = getAbsoluteY()
+    UInt16 ad = getAbsoluteY()
         X = memory.ReadAddress(ad)
         SetFlags(X)
-        prn("LDX $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+        //prn("LDX $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 // Register Y Loading
@@ -1780,39 +2029,39 @@ void LDY_i() // A0
 {
     Y = getImmediate()
         SetFlags(Y)
-        prn("LDY #$" + String(format: "%02X", Y))
+        //prn("LDY #$" + String(format: "%02X", Y))
     }
 
 void LDY_z() // A4
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         Y = memory.ReadAddress((UInt16)(ad))
         SetFlags(Y)
-        prn("LDY $" + String(format: "%02X", Y))
+        //prn("LDY $" + String(format: "%02X", Y))
     }
 
 void LDY_zx() // B4
 {
-    let ad = getZeroPageX()
+    UInt16 ad = getZeroPageX()
         Y = memory.ReadAddress(ad)
         SetFlags(Y)
-        prn("LDY $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
+        //prn("LDY $" + String(format: "%02X", ad & -(UInt16)(X)) + ",X")
     }
 
 void LDY_a() // AC
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         Y = memory.ReadAddress((UInt16)(ad))
         SetFlags(Y)
-        prn("LDY $" + String(format: "%04X", ad))
+        //prn("LDY $" + String(format: "%04X", ad))
     }
 
 void LDY_indexed_x() // BC
 {
-    let ad = getAbsoluteX()
+    UInt16 ad = getAbsoluteX();
         Y = memory.ReadAddress(ad)
         SetFlags(Y)
-        prn("LDY $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        //prn("LDY $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
@@ -1822,83 +2071,83 @@ void LDY_indexed_x() // BC
 void AND_i() // 29
 {
     let v = getImmediate()
-        A = A & v
-        SetFlags(A)
-        prn("AND #$" + String(format: "%02X", v))
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND #$" + String(format: "%02X", v))
     }
 
 void AND_z() // 25
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
-        A = A & v
-        SetFlags(A)
-        prn("AND $" + String(format: "%02X", ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND $" + String(format: "%02X", ad))
     }
 
 void AND_zx() // 35
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        let v = memory.ReadAddress(ad)
-        A = A & v
-        SetFlags(A)
-        prn("AND $" + String(format: "%02X", z))
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad)
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND $" + String(format: "%02X", z))
     }
 
 void AND_a() // 2d
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
-        A = A & v
-        SetFlags(A)
-        prn("AND $" + String(format: "%04X", ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND $" + String(format: "%04X", ad))
     }
 
 void AND_indexed_x() // 3d
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress(ad)
-        A = A & v
-        SetFlags(A)
-        prn("AND $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad)
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 void AND_indexed_y() // 39
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
-        A = A & v
-        SetFlags(A)
-        prn("AND $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 void AND_indexed_indirect_x() // 21
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
-        A = A & v
-        SetFlags(A)
-        prn("AND ($" + String(format: "%02X", za) + ",X)")
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND ($" + String(format: "%02X", za) + ",X)")
     }
 
 void AND_indirect_indexed_y() // 31
 {
     //   let za = memory.ReadAddress(PC)
-    //  let v = memory.ReadAddress(getIndirectIndexedBase())
+    //  byte v = memory.ReadAddress(getIndirectIndexedBase())
 
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
-
-
-        A = A & v
-        SetFlags(A)
-        prn("AND ($" + String(format: "%02X", adr - (UInt16)(Y)) + ",X)")
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
 
 
-        //   A = A & v
-        //   SetFlags(A)
-        //   prn("AND ($"+String(format: "%02X",za)+"),Y")
+        A = (byte)(A & v);
+        SetFlags(A);
+        //prn("AND ($" + String(format: "%02X", adr - (UInt16)(Y)) + ",X)")
+
+
+        //   A = (byte)(A & v);
+        //   SetFlags(A);
+        //   //prn("AND ($"+String(format: "%02X",za)+"),Y")
 }
 
 // LSR
@@ -1907,57 +2156,57 @@ void LSR_i() // 4A
 {
     CARRY_FLAG = (A & 1) == 1
         A = A >> 1
-        SetFlags(A)
-        prn("LSR")
+        SetFlags(A);
+        //prn("LSR")
     }
 
 void LSR_z() // 46
 {
-    let ad = memory.ReadAddress(PC)
+    UInt16 ad = memory.ReadAddress(PC)
         var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = ((v & 1) == 1)
         v = v >> 1
         memory.WriteAddress((UInt16)(ad), v)
         PC = (UInt16)(PC + 1);
-        SetFlags(v)
-        prn("LSR $" + String(format: "%02X", ad))
+        SetFlags(v);
+        //prn("LSR $" + String(format: "%02X", ad))
     }
 
 void LSR_zx() // 56
 {
 
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        var v = memory.ReadAddress(ad)
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad);
 
 
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("LSR $" + String(format: "%02X", z) + ",X")
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("LSR $" + String(format: "%02X", z) + ",X")
     }
 
 void LSR_a() // 4E
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("LSR $" + String(format: "%04X", ad))
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("LSR $" + String(format: "%04X", ad))
     }
 
 void LSR_indexed_x() // 5E
 {
-    let ad = getAbsoluteX()
-        var v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
         CARRY_FLAG = (v & 1) == 1
         v = v >> 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("LSR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("LSR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
@@ -1966,74 +2215,74 @@ void LSR_indexed_x() // 5E
 void OR_i() // 09
 {
     let v = getImmediate()
-        A = A | v
-        SetFlags(A)
-        prn("OR #$" + String(format: "%02X", v))
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR #$" + String(format: "%02X", v))
     }
 
 void OR_z() // 5
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
-        A = A | v
-        SetFlags(A)
-        prn("OR $" + String(format: "%02X", ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%02X", ad))
     }
 
 void OR_zx() // 15
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        let v = memory.ReadAddress(ad)
-        A = A | v
-        SetFlags(A)
-        prn("OR $" + String(format: "%02X", z) + ",X")
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad)
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%02X", z) + ",X")
     }
 
 void OR_a() // 0d
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
-        A = A | v
-        SetFlags(A)
-        prn("OR $" + String(format: "%04X", ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%04X", ad))
     }
 
 void OR_indexed_x() // 1d
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress((ad))
-        A = A | v
-        SetFlags(A)
-        prn("OR $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%04X", ad - (UInt16)(X)) + ",X")
     }
 
 void OR_indexed_y() // 19
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
-        A = A | v
-        SetFlags(A)
-        prn("OR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 void OR_indexed_indirect_x() // 01
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
-        A = A | v
-        SetFlags(A)
-        prn("OR ($" + String(format: "%02X", za) + ",X)")
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR ($" + String(format: "%02X", za) + ",X)")
     }
 
 void OR_indirect_indexed_y() // 11
 {
 
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
-        A = A | v
-        SetFlags(A)
-        prn("OR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
+        A = (byte)(A | v);
+        SetFlags(A);
+        //prn("OR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
     }
 
 // Accumulator EOR
@@ -2042,72 +2291,72 @@ void EOR_i() // 49
 {
     let v = getImmediate()
         A = A ^ v
-        SetFlags(A)
-        prn("EOR #$" + String(format: "%02X", v))
+        SetFlags(A);
+        //prn("EOR #$" + String(format: "%02X", v))
     }
 
 void EOR_z() // 45
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+        byte v = memory.ReadAddress((UInt16)(ad));
         A = A ^ v
-        SetFlags(A)
-        prn("EOR $" + String(format: "%02X", ad))
+        SetFlags(A);
+        //prn("EOR $" + String(format: "%02X", ad))
     }
 
 void EOR_zx() // 55
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        let v = memory.ReadAddress(ad)
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(A)
-        prn("EOR $" + String(format: "%02X", z) + ",X")
+        SetFlags(A);
+        //prn("EOR $" + String(format: "%02X", z) + ",X")
     }
 
 void EOR_a() // 4D
 {
-    let ad = getAbsoluteAddress()
-        let v = memory.ReadAddress((UInt16)(ad))
+    UInt16 ad = getAbsoluteAddress()
+        byte v = memory.ReadAddress((UInt16)(ad));
         A = A ^ v
-        SetFlags(A)
-        prn("EOR $" + String(format: "%04X", ad))
+        SetFlags(A);
+        //prn("EOR $" + String(format: "%04X", ad))
     }
 
 void EOR_indexed_x() // 5d
 {
-    let ad = getAbsoluteX()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(A)
-        prn("EOR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        SetFlags(A);
+        //prn("EOR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 void EOR_indexed_y() // 59
 {
-    let ad = getAbsoluteY()
-        let v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteY()
+        byte v = memory.ReadAddress(ad)
         A = A ^ v
-        SetFlags(A)
-        prn("EOR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
+        SetFlags(A);
+        //prn("EOR $" + String(format: "%04X", ad - (UInt16)(Y)) + ",Y")
     }
 
 void EOR_indexed_indirect_x() // 41
 {
-    let za = memory.ReadAddress(PC);
+    UInt16 za = memory.ReadAddress(PC);
     let v = get_indexed_indirect_zp_x()
         A = A ^ v
-        SetFlags(A)
-        prn("EOR ($" + String(format: "%02X", za) + ",X)")
+        SetFlags(A);
+        //prn("EOR ($" + String(format: "%02X", za) + ",X)")
     }
 
 void EOR_indirect_indexed_y() // 51
 {
-    let adr = getIndirectY()
-        let v = memory.ReadAddress(adr)
+    UInt16 adr = getIndirectY()
+        byte v = memory.ReadAddress(adr)
         A = A ^ v
-        SetFlags(A)
-        prn("EOR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
+        SetFlags(A);
+        //prn("EOR ($" + String(format: "%02X", adr - (UInt16)(Y)) + "),Y")
 
 
     }
@@ -2120,8 +2369,8 @@ void ASL_i() // 0A
 {
     CARRY_FLAG = ((A & 128) == 128)
         A = A << 1
-        SetFlags(A)
-        prn("ASL")
+        SetFlags(A);
+        //prn("ASL")
     }
 
 void ASL_z() // 06
@@ -2129,45 +2378,45 @@ void ASL_z() // 06
     let za = memory.ReadAddress(PC)
         var v = memory.ReadAddress((UInt16)(za))
         CARRY_FLAG = ((v & 128) == 128)
-        v = v << 1
+        v = (byte)(v << 1);
         memory.WriteAddress((UInt16)(za), v)
         PC = (UInt16)(PC + 1);
-        SetFlags(v)
-        prn("ASL $" + String(format: "%02X", za))
+        SetFlags(v);
+        //prn("ASL $" + String(format: "%02X", za))
     }
 
 void ASL_zx() // 16
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        var v = memory.ReadAddress(ad)
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad);
         CARRY_FLAG = ((v & 128) == 128)
-        v = v << 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("ASL $" + String(format: "%02X", z) + ",X")
+        v = (byte)(v << 1);
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("ASL $" + String(format: "%02X", z) + ",X")
     }
 
 void ASL_a() // 0E
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         var v = memory.ReadAddress((UInt16)(ad))
         CARRY_FLAG = ((v & 128) == 128)
-        v = v << 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("ASL $" + String(format: "%04X", ad))
+        v = (byte)(v << 1);
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("ASL $" + String(format: "%04X", ad))
     }
 
 void ASL_indexed_x() // 1E
 {
-    let ad = getAbsoluteX()
-        var v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
         CARRY_FLAG = ((v & 128) == 128)
-        v = v << 1
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
-        prn("ASL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        v = (byte)(v << 1);
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
+        //prn("ASL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
@@ -2179,64 +2428,64 @@ void ROL_i() // 2a
     let msb = ((A & 128) == 128)
         A = A << 1
         A = A | (CARRY_FLAG ? 1 : 0)
-        SetFlags(A)
+        SetFlags(A);
         CARRY_FLAG = msb
-        prn("ROL A")
+        //prn("ROL A")
     }
 
 void ROL_z() // 26
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         var v = memory.ReadAddress((UInt16)(ad))
         let msb = ((v & 128) == 128)
-        v = v << 1
+        v = (byte)(v << 1);
         v = v | (CARRY_FLAG ? 1 : 0)
         memory.WriteAddress((UInt16)(ad), v)
-        SetFlags(v)
+        SetFlags(v);
         CARRY_FLAG = msb
-        prn("ROL $" + String(format: "%02X", ad))
+        //prn("ROL $" + String(format: "%02X", ad))
     }
 
 void ROL_zx() // 36
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        var v = memory.ReadAddress(ad)
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad);
 
 
         let msb = ((v & 128) == 128)
-        v = v << 1
+        v = (byte)(v << 1);
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = msb
-        prn("ROL $" + String(format: "%02X", z) + ",X")
+        //prn("ROL $" + String(format: "%02X", z) + ",X")
     }
 
 void ROL_a() // 2E
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         var v = memory.ReadAddress((UInt16)(ad))
         let msb = ((v & 128) == 128)
-        v = v << 1
+        v = (byte)(v << 1);
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = msb
-        prn("ROL $" + String(format: "%04X", ad))
+        //prn("ROL $" + String(format: "%04X", ad))
     }
 
 void ROL_indexed_x() // 3E
 {
-    let ad = getAbsoluteX()
-        var v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
         let msb = ((v & 128) == 128)
-        v = v << 1
+        v = (byte)(v << 1);
         v = v | (CARRY_FLAG ? 1 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = msb
-        prn("ROL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        //prn("ROL $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 // ROR
@@ -2246,64 +2495,64 @@ void ROR_i() // 6A
     let lsb = ((A & 1) == 1)
         A = A >> 1
         A = A | (CARRY_FLAG ? 128 : 0)
-        SetFlags(A)
+        SetFlags(A);
         CARRY_FLAG = lsb
-        prn("ROR A")
+        //prn("ROR A")
     }
 
 void ROR_z() // 66
 {
-    let ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    UInt16 ad = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         var v = memory.ReadAddress((UInt16)(ad))
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
         memory.WriteAddress((UInt16)(ad), v)
-        SetFlags(v)
+        SetFlags(v);
         CARRY_FLAG = lsb
-        prn("ROR $" + String(format: "%02X", ad))
+        //prn("ROR $" + String(format: "%02X", ad))
     }
 
 void ROR_zx() // 76
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
-        var v = memory.ReadAddress(ad)
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
+        byte v = memory.ReadAddress(ad);
 
 
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = lsb
-        prn("ROR $" + String(format: "%02X", z) + ",X")
+        //prn("ROR $" + String(format: "%02X", z) + ",X")
     }
 
 void ROR_a() // 6E
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         var v = memory.ReadAddress((UInt16)(ad))
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = lsb
-        prn("ROR $" + String(format: "%04X", ad))
+        //prn("ROR $" + String(format: "%04X", ad))
     }
 
 void ROR_indexed_x() // 7E
 {
-    let ad = getAbsoluteX()
-        var v = memory.ReadAddress(ad)
+    UInt16 ad = getAbsoluteX();
+        byte v = memory.ReadAddress(ad);
         let lsb = ((v & 1) == 1)
         v = v >> 1
         v = v | (CARRY_FLAG ? 128 : 0)
-        memory.WriteAddress(ad, v)
-        SetFlags(v)
+        memory.WriteAddress(ad, v);
+        SetFlags(v);
         CARRY_FLAG = lsb
-        prn("ROR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
+        //prn("ROR $" + String(format: "%04X", ad & -(UInt16)(X)) + ",X")
     }
 
 
@@ -2313,21 +2562,21 @@ void STX_z() // 86
 {
     let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         memory.WriteAddress((UInt16)(zero_page_address), X)
-        prn("STX $" + String(format: "%02X", zero_page_address))
+        //prn("STX $" + String(format: "%02X", zero_page_address))
     }
 
 void STX_a() // 8e
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         memory.WriteAddress((UInt16)(ad), X)
-        prn("STX $" + String(format: "%04X", ad))
+        //prn("STX $" + String(format: "%04X", ad))
     }
 
 void STX_ya() // 96
 {
-    let adr = getZeroPageY()
+    UInt16 adr = getZeroPageY()
         memory.WriteAddress(adr, X)
-        prn("STX $#" + String(format: "%02X", adr & -(UInt16)(Y)) + ",Y")
+        //prn("STX $#" + String(format: "%02X", adr & -(UInt16)(Y)) + ",Y")
     }
 
 
@@ -2335,22 +2584,22 @@ void STY_z() // 84
 {
     let zero_page_address = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         memory.WriteAddress((UInt16)(zero_page_address), Y)
-        prn("STY $" + String(format: "%02X", zero_page_address))
+        //prn("STY $" + String(format: "%02X", zero_page_address))
     }
 
 void STY_a() // 8c
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         memory.WriteAddress((UInt16)(ad), Y)
-        prn("STY $" + String(format: "%04X", ad))
+        //prn("STY $" + String(format: "%04X", ad))
     }
 
 void STY_xa() // 94
 {
-    let z = memory.ReadAddress(PC)
-        let ad = getZeroPageX()
+    byte z = memory.ReadAddress(PC);
+        UInt16 ad = getZeroPageX()
         memory.WriteAddress(ad, Y)
-        prn("STY $#" + String(format: "%02X", z) + ",X")
+        //prn("STY $#" + String(format: "%02X", z) + ",X")
     }
 
 
@@ -2361,41 +2610,41 @@ void TAX() // AA
 {
     X = A
         SetFlags(X)
-        prn("TAX")
+        //prn("TAX")
     }
 
 void TAY() // A8
 {
     Y = A
         SetFlags(Y)
-        prn("TAY")
+        //prn("TAY")
     }
 
 void TSX() //BA
 {
     X = SP
         SetFlags(X)
-        prn("TSX")
+        //prn("TSX")
     }
 
 void TXA() // 8A
 {
     A = X
-        SetFlags(A)
-        prn("TXA")
+        SetFlags(A);
+        //prn("TXA")
     }
 
 void TXS() //9A
 {
     SP = X
-        prn("TXS")
+        //prn("TXS")
     }
 
 void TYA() // 98
 {
     A = Y
-        SetFlags(A)
-        prn("TYA")
+        SetFlags(A);
+        //prn("TYA")
     }
 
 
@@ -2408,7 +2657,7 @@ void TYA() // 98
 void PHA() // 48
 {
     push(A)
-        prn("PHA")
+        //prn("PHA")
     }
 
 void PHP() // 08
@@ -2420,21 +2669,21 @@ void PHP() // 08
         let r = GetStatusRegister()
         push(r | (BREAK_FLAG ? 0x10 : 0))  // 6502 quirk - push the BREAK_FLAG but don't set it
         //    push(r)
-        prn("PHP")
+        //prn("PHP")
     }
 
 // 65c02 only
 void PHX() // DA
 {
     push(X)
-        prn("PHX")
+        //prn("PHX")
     }
 
 // 65c02 only
 void PHY() // 5A
 {
     push(Y)
-        prn("PHY")
+        //prn("PHY")
     }
 
 
@@ -2443,10 +2692,10 @@ void PHY() // 5A
 void PLA() // 68
 {
     A = pop()
-        SetFlags(A)
+        SetFlags(A);
 
 
-        prn("PLA")
+        //prn("PLA")
     }
 
 
@@ -2454,7 +2703,7 @@ void PLP() // 28
 {
     let p = pop()
         SetStatusRegister(reg: p)
-        prn("PLP")
+        //prn("PLP")
     }
 
 // 65c02 only
@@ -2462,7 +2711,7 @@ void PLX() // FA
 {
     X = pop()
         SetFlags(X)
-        prn("PLX")
+        //prn("PLX")
     }
 
 // 65c02 only
@@ -2470,7 +2719,7 @@ void PLY() // 7A
 {
     Y = pop()
         SetFlags(Y)
-        prn("PLY")
+        //prn("PLY")
     }
 
 
@@ -2479,43 +2728,43 @@ void PLY() // 7A
 void CLI() // 58
 {
     INTERRUPT_DISABLE = false
-        prn("CLI")
+        //prn("CLI")
     }
 
 void SEC() // 38
 {
     CARRY_FLAG = true
-        prn("SEC")
+        //prn("SEC")
     }
 
 void SED() // F8
 {
     DECIMAL_MODE = true
-        prn("SED")
+        //prn("SED")
     }
 
 void SEI() //78
 {
     INTERRUPT_DISABLE = true
-        prn("SEI")
+        //prn("SEI")
     }
 
 void CLC()
 {
     CARRY_FLAG = false
-        prn("CLC")
+        //prn("CLC")
     }
 
 void CLV() // B8
 {
     OVERFLOW_FLAG = false
-        prn("CLV")
+        //prn("CLV")
     }
 
 void CLD() // d8
 {
     DECIMAL_MODE = false
-        prn("CLD")
+        //prn("CLD")
     }
 
 // Increment & Decrement - they don't care about Decimal Mode
@@ -2533,7 +2782,7 @@ void INY() // CB
         //            Y = Y + 1
         //        }
     SetFlags(Y)
-        prn("INY")
+        //prn("INY")
     }
 
 void INX() // E8
@@ -2549,7 +2798,7 @@ void INX() // E8
         //            X = X + 1
         //        }
     SetFlags(X)
-        prn("INX")
+        //prn("INX")
     }
 
 void DEX() // CA
@@ -2565,7 +2814,7 @@ void DEX() // CA
         //            X = X - 1
         //        }
     SetFlags(X)
-        prn("DEX")
+        //prn("DEX")
     }
 
 void DEY() // 88
@@ -2581,7 +2830,7 @@ void DEY() // 88
         //            Y = Y - 1
         //        }
     SetFlags(Y)
-        prn("DEY")
+        //prn("DEY")
     }
 
 
@@ -2589,22 +2838,22 @@ void DEY() // 88
 
 void DEC_z() // C6
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         var t = memory.ReadAddress((UInt16)(v))
         if t == 0 { t = 255 } else { t = t - 1 }
     memory.WriteAddress((UInt16)(v), t)
         SetFlags(t)
-        prn("DEC $" + String(format: "%02X", v))
+        //prn("DEC $" + String(format: "%02X", v))
     }
 
 void DEC_zx() // D6
 {
-    let ad = getZeroPageX()
+    UInt16 ad = getZeroPageX()
         var t = memory.ReadAddress(ad)
         if t == 0 { t = 255 } else { t = t - 1 }
     memory.WriteAddress(ad, t)
         SetFlags(t)
-        prn("DEC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
+        //prn("DEC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
 void DEC_a() // CE
@@ -2614,7 +2863,7 @@ void DEC_a() // CE
         if t == 0 { t = 255 } else { t = t - 1 }
     memory.WriteAddress(v, t)
         SetFlags(t)
-        prn("DEC $" + String(format: "%02X", v))
+        //prn("DEC $" + String(format: "%02X", v))
     }
 
 void DEC_ax() // DE
@@ -2624,28 +2873,28 @@ void DEC_ax() // DE
         if t == 0 { t = 255 } else { t = t - 1 }
     memory.WriteAddress(v + (UInt16)(X), t)
         SetFlags(t)
-        prn("DEC $" + String(format: "%04X", v) + ",X")
+        //prn("DEC $" + String(format: "%04X", v) + ",X")
     }
 
 
 void INC_z() // E6
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         var t = memory.ReadAddress((UInt16)(v))
         if t == 255 { t = 0 } else { t = t + 1 }
     memory.WriteAddress((UInt16)(v), t)
         SetFlags(t)
-        prn("INC $" + String(format: "%02X", v))
+        //prn("INC $" + String(format: "%02X", v))
     }
 
 void INC_zx() // F6
 {
-    let ad = getZeroPageX()
+    UInt16 ad = getZeroPageX()
         var t = memory.ReadAddress(ad)
         if t == 255 { t = 0 } else { t = t + 1 }
     memory.WriteAddress(ad, t)
         SetFlags(t)
-        prn("INC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
+        //prn("INC $" + String(format: "%02X", ad - (UInt16)(X)) + ",X")
     }
 
 void INC_a() // EE
@@ -2655,7 +2904,7 @@ void INC_a() // EE
         if t == 255 { t = 0 } else { t = t + 1 }
     memory.WriteAddress(v, t)
         SetFlags(t)
-        prn("INC $" + String(format: "%04X", v))
+        //prn("INC $" + String(format: "%04X", v))
     }
 
 void INC_ax() // FE
@@ -2665,7 +2914,7 @@ void INC_ax() // FE
         if t == 255 { t = 0 } else { t = t + 1 }
     memory.WriteAddress(v + (UInt16)(X), t)
         SetFlags(t)
-        prn("INC $" + String(format: "%04X", v) + ",X")
+        //prn("INC $" + String(format: "%04X", v) + ",X")
     }
 
 
@@ -2684,7 +2933,7 @@ void BRA() // 80
 {
     let t = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         PerformRelativeAddress(jump: t)
-        prn("BRA $" + String(t, radix: 16))
+        //prn("BRA $" + String(t, radix: 16))
     }
 
 void BPL() // 10
@@ -2696,7 +2945,7 @@ void BPL() // 10
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BPL $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
+    //prn("BPL $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
     }
 
 void BMI() // 30
@@ -2706,7 +2955,7 @@ void BMI() // 30
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BMI $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
+    //prn("BMI $" + String(format: "%02X", t) + ":" + String(format: "%04X", PC))
     }
 
 void BVC() // 50
@@ -2716,7 +2965,7 @@ void BVC() // 50
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BVC $" + String(t, radix: 16))
+    //prn("BVC $" + String(t, radix: 16))
     }
 
 void BVS() // 70
@@ -2726,7 +2975,7 @@ void BVS() // 70
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BVS $" + String(t, radix: 16))
+    //prn("BVS $" + String(t, radix: 16))
     }
 
 void BCC() // 90
@@ -2736,7 +2985,7 @@ void BCC() // 90
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BCC $" + String(format: "%02X", t))
+    //prn("BCC $" + String(format: "%02X", t))
     }
 
 void BCS() // B0
@@ -2746,7 +2995,7 @@ void BCS() // B0
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BCS $" + String(format: "%02X", t))
+    //prn("BCS $" + String(format: "%02X", t))
     }
 
 void BEQ() // F0
@@ -2756,7 +3005,7 @@ void BEQ() // F0
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BEQ $" + String(format: "%02X", t))
+    //prn("BEQ $" + String(format: "%02X", t))
     }
 
 void BNE() // D0
@@ -2766,7 +3015,7 @@ void BNE() // D0
         {
         PerformRelativeAddress(jump: t)
         }
-    prn("BNE $" + String(format: "%02X", t))
+    //prn("BNE $" + String(format: "%02X", t))
     }
 
 
@@ -2774,20 +3023,20 @@ void BNE() // D0
 
 void JMP_ABS() // 4c
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         PC = ad
-        prn("JMP $" + String(format: "%04X", ad))
+        //prn("JMP $" + String(format: "%04X", ad))
     }
 
 // buggy plop // 6502 bug here
 void JMP_REL() // 6c
 {
-    let ad = getAbsoluteAddress()
+    UInt16 ad = getAbsoluteAddress()
         let target = getAddress(ad)
         PC = target
 
 
-        prn("JMP $" + String(PC, radix: 16))
+        //prn("JMP $" + String(PC, radix: 16))
     }
 
 
@@ -2809,7 +3058,7 @@ void JSR() // 20
         PC = target
 
 
-        prn("JSR $" + String(format: "%04X", target))
+        //prn("JSR $" + String(format: "%04X", target))
     }
 
 void RTS() // 60
@@ -2817,7 +3066,7 @@ void RTS() // 60
     let l = (UInt16)(pop())
         let h = (UInt16)(pop())
         PC = 1 + (h << 8) & +l
-        prn("RTS")
+        //prn("RTS")
     }
 
 // Utilities called by various opcodes
@@ -2826,32 +3075,32 @@ void RTS() // 60
 
 void getAbsoluteX() -> UInt16
 {
-    let ad = getAbsoluteAddress() & +(UInt16)(X)
+    UInt16 ad = getAbsoluteAddress() & +(UInt16)(X)
         return ad
     }
 
 void getAbsoluteY() -> UInt16
 {
-    let ad = getAbsoluteAddress() & +(UInt16)(Y)
+    UInt16 ad = getAbsoluteAddress() & +(UInt16)(Y)
         return ad
     }
 
 void getImmediate() -> (byte)
 {
-    let v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
+    byte v = memory.ReadAddress(PC); PC = (UInt16)(PC + 1);
         return v
     }
 
 void getZeroPageX() -> UInt16
 {
-    let adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(X)
+    UInt16 adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(X)
         PC = (UInt16)(PC + 1);
         return (adr & 0xff)
     }
 
 void getZeroPageY() -> UInt16
 {
-    let adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(Y)
+    UInt16 adr = (UInt16)(memory.ReadAddress(PC)) + (UInt16)(Y)
         PC = (UInt16)(PC + 1);
         return (adr & 0xff)
     }
@@ -2860,7 +3109,7 @@ void getZeroPageY() -> UInt16
 void getIndirectX() -> UInt16 // used by 61, ADC_Indexed_Indirect_X
 {
     let eah = ((UInt16)(memory.ReadAddress(PC)) & +(UInt16)(X)) & 0xff
-        let adr = (UInt16)(memory.ReadAddress((eah & 0x00ff)))
+        UInt16 adr = (UInt16)(memory.ReadAddress((eah & 0x00ff)))
             |
             (UInt16)(memory.ReadAddress(((eah & +1) & 0x00ff))) << 8
         PC = (UInt16)(PC + 1);
@@ -2891,7 +3140,7 @@ void get_indexed_indirect_zp_x_address() -> UInt16
         let bal : UInt16 = (UInt16)(fi) + (UInt16)(X)
         let adl = (UInt16)(memory.ReadAddress(0xFF & bal))
         let adh = (UInt16)(memory.ReadAddress(0xFF & (bal + 1)))
-        let adr = (adh << 8) + adl
+        UInt16 adr = (adh << 8) + adl
         return adr
 
 
@@ -2912,7 +3161,7 @@ void push(_ v : (byte))
 void pop() -> (byte)
 {
     SP = SP & +1
-        let v = memory.ReadAddress((UInt16)(0x100 + (UInt16)(SP)))
+        byte v = memory.ReadAddress((UInt16)(0x100 + (UInt16)(SP)))
         return v
     }
 
@@ -2964,7 +3213,7 @@ void addC(_ n2: (byte))
         }
 
         A = (byte)(total & 0xFF)
-            SetFlags(A)
+            SetFlags(A);
 
 
             return
@@ -3008,7 +3257,7 @@ void ADCDecimalImplementation(s : (byte))
     // Calculate accumulator
     A = ((AH << 4) | (AL & 15)) & 255;
 
-    SetFlags(A)
+    SetFlags(A);
 
 
     }
@@ -3098,7 +3347,7 @@ void subC(_ local_data: (byte))
     A = (byte)((0xFF & total))
 
 
-        SetFlags(A)
+        SetFlags(A);
 
 
     }
@@ -3186,7 +3435,7 @@ void addC2(_ local_data: (byte))
 
 
 
-        SetFlags(A)
+        SetFlags(A);
 
 
     }
@@ -3236,7 +3485,7 @@ void subC2(_ n2: (byte))
     }
 
     A = (byte)(total & 0xFF)
-        SetFlags(A)
+        SetFlags(A);
 
 
         if DECIMAL_MODE
@@ -3294,7 +3543,7 @@ void subC2(_ n2: (byte))
             OVERFLOW_FLAG = false
             }
 
-        SetFlags(A)
+        SetFlags(A);
             return
 
 
@@ -3303,7 +3552,7 @@ void subC2(_ n2: (byte))
     else
     {
         A = (byte)(result & 0xFF)
-            SetFlags(A)
+            SetFlags(A);
         }
 }
 
@@ -3323,7 +3572,7 @@ void SetKeypress(keyPress : Bool, keyNum: (byte))
 
 
 // Debug message utility
-void prn(_ message : String)
+void //prn(_ message : String)
     {
     let ins = String(message).padding(toLength: 12, withPad: " ", startingAt: 0)
         statusmessage = ins
