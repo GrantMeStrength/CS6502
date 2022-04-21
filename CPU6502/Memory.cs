@@ -18,12 +18,12 @@ namespace CPU6502
             return (UInt16)(address & 0xffff);
         }
 
-        byte ReadAddress(UInt16 address)
+      public  byte ReadAddress(UInt16 address)
         {
             return MEMORY[(MaskMemory(address))].cell;
     }
     
-     void WriteAddress(UInt16 address, byte data)
+     public void WriteAddress(UInt16 address, byte data)
     {
         if (!MEMORY[address].ROM)
                 {
@@ -38,8 +38,9 @@ namespace CPU6502
 
     public Memory()
         {
-           // Initialize any special Memory characteristics such as defining ROM and pre-loading programs
-          
+            // Initialize any special Memory characteristics such as defining ROM and pre-loading programs
+
+            Console.WriteLine("Memory is ready");
 
         }
     }
